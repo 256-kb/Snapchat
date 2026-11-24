@@ -18,6 +18,9 @@ class SnapApp {
     this.dmConversations = new Map(); // uuid -> messages
     this.pendingFriendRequests = new Map(); // requestId -> requestData
     this.preselectedRecipientUuid = null;
+    this.replyingTo = null; // { id, senderUuid, senderNickname, text }
+    this.contextTargetMessage = null;
+    this.contextTargetIsSnap = false;
 
     // Swipe tactile
     this.touchStartX = 0;
@@ -40,6 +43,7 @@ class SnapApp {
     this.bindEditorControls();
     this.bindViewerEvents();
     this.bindDmEvents();
+    this.bindContextMenuEvents();
     this.bindFriendRequestEvents();
     this.bindKeyboardShortcuts();
 
@@ -195,6 +199,12 @@ class SnapApp {
     window.addEventListener('keydown', (e) => {
       if (e.key !== 'Escape') return;
 
+      const ctxMenu = document.getElementById('msg-context-menu');
+      if (ctxMenu && !ctxMenu.classList.contains('hidden')) {
+        this.hideContextMenu();
+        return;
+      }
+
       if (viewer.isOpen) {
         viewer.closeAndPurge();
         return;
@@ -211,6 +221,11 @@ class SnapApp {
       const editorEl = document.getElementById('snap-editor-overlay');
       if (editorEl && !editorEl.classList.contains('hidden')) {
         editor.close();
+        return;
+      }
+
+      if (this.replyingTo) {
+        this.clearReplyTarget();
         return;
       }
 
@@ -233,6 +248,8 @@ class SnapApp {
         document.getElementById('dm-view').classList.remove('active');
         document.getElementById('app-container').classList.remove('in-dm');
         this.currentDmPeer = null;
+        this.clearReplyTarget();
+        this.hideContextMenu();
         this.renderFriendsList();
         this.renderOnlinePeers();
       }
@@ -537,21 +554,32 @@ class SnapApp {
     const dmForm = document.getElementById('dm-form');
     const dmInput = document.getElementById('dm-input');
     const quickSnapBtn = document.getElementById('dm-quick-snap-btn');
+    const replyCancelBtn = document.getElementById('dm-reply-cancel-btn');
 
     backBtn.addEventListener('click', () => {
       dmView.classList.remove('active');
       document.getElementById('app-container').classList.remove('in-dm');
       this.currentDmPeer = null;
+      this.clearReplyTarget();
+      this.hideContextMenu();
       this.renderFriendsList();
       this.renderOnlinePeers();
     });
+
+    if (replyCancelBtn) {
+      replyCancelBtn.addEventListener('click', () => {
+        this.clearReplyTarget();
+        dmInput.focus();
+      });
+    }
 
     dmForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       const text = dmInput.value.trim();
       if (!text || !this.currentDmPeer) return;
 
-      const msg = p2p.sendMessage(this.currentDmPeer.uuid, text, true);
+      const replyToPayload = this.replyingTo ? { ...this.replyingTo } : null;
+      const msg = p2p.sendMessage(this.currentDmPeer.uuid, text, true, replyToPayload);
 
       if (!this.dmConversations.has(this.currentDmPeer.uuid)) {
         this.dmConversations.set(this.currentDmPeer.uuid, []);
@@ -562,6 +590,7 @@ class SnapApp {
       });
 
       dmInput.value = '';
+      this.clearReplyTarget();
       p2p.sendTyping(this.currentDmPeer.uuid, false);
       this.renderDmMessages();
       this.renderFriendsList();
@@ -583,13 +612,237 @@ class SnapApp {
       this.preselectedRecipientUuid = this.currentDmPeer.uuid;
       dmView.classList.remove('active');
       document.getElementById('app-container').classList.remove('in-dm');
+      this.clearReplyTarget();
+      this.hideContextMenu();
       this.goToScreen(1); // Caméra
       this.showToast(`Prenez un Snap pour ${this.currentDmPeer.nickname}`);
     });
   }
 
+  /**
+   * Menu contextuel sur message (Clic droit PC / Appui long Mobile)
+   */
+  bindContextMenuEvents() {
+    const menu = document.getElementById('msg-context-menu');
+    const replyBtn = document.getElementById('ctx-reply-btn');
+    const saveBtn = document.getElementById('ctx-save-btn');
+    const copyBtn = document.getElementById('ctx-copy-btn');
+
+    if (!menu) return;
+
+    replyBtn.addEventListener('click', () => {
+      if (this.contextTargetMessage) {
+        this.setReplyTarget(this.contextTargetMessage);
+      }
+      this.hideContextMenu();
+    });
+
+    saveBtn.addEventListener('click', async () => {
+      if (this.contextTargetMessage && !this.contextTargetIsSnap) {
+        await this.toggleMessageSave(this.contextTargetMessage);
+        this.renderDmMessages();
+      }
+      this.hideContextMenu();
+    });
+
+    copyBtn.addEventListener('click', async () => {
+      if (this.contextTargetMessage && this.contextTargetMessage.text) {
+        try {
+          await navigator.clipboard.writeText(this.contextTargetMessage.text);
+          this.showToast('Message copié');
+        } catch (err) {
+          this.showToast('Impossible de copier automatiquement');
+        }
+      }
+      this.hideContextMenu();
+    });
+
+    // Fermer le menu si clic ou scroll en dehors
+    document.addEventListener('pointerdown', (e) => {
+      if (!menu.classList.contains('hidden') && !menu.contains(e.target)) {
+        this.hideContextMenu();
+      }
+    });
+
+    const msgContainer = document.getElementById('dm-messages-container');
+    if (msgContainer) {
+      msgContainer.addEventListener('scroll', () => this.hideContextMenu(), { passive: true });
+    }
+  }
+
+  showContextMenu(clientX, clientY, message, isSnap = false) {
+    const menu = document.getElementById('msg-context-menu');
+    const saveBtn = document.getElementById('ctx-save-btn');
+    const saveLabel = document.getElementById('ctx-save-label');
+    const copyBtn = document.getElementById('ctx-copy-btn');
+    if (!menu) return;
+
+    this.contextTargetMessage = message;
+    this.contextTargetIsSnap = isSnap;
+
+    if (isSnap) {
+      saveBtn.classList.add('hidden');
+      copyBtn.classList.add('hidden');
+    } else {
+      saveBtn.classList.remove('hidden');
+      copyBtn.classList.remove('hidden');
+      saveLabel.textContent = message.saved ? 'Désenregistrer du chat' : 'Enregistrer dans le chat';
+    }
+
+    menu.classList.remove('hidden');
+    menu.style.left = '0px';
+    menu.style.top = '0px';
+
+    const rect = menu.getBoundingClientRect();
+    const pad = 10;
+    const left = Math.max(pad, Math.min(clientX, window.innerWidth - rect.width - pad));
+    const top = Math.max(pad, Math.min(clientY, window.innerHeight - rect.height - pad));
+
+    menu.style.left = `${left}px`;
+    menu.style.top = `${top}px`;
+  }
+
+  hideContextMenu() {
+    const menu = document.getElementById('msg-context-menu');
+    if (menu) {
+      menu.classList.add('hidden');
+    }
+    this.contextTargetMessage = null;
+    this.contextTargetIsSnap = false;
+  }
+
+  setReplyTarget(message) {
+    if (!this.currentDmPeer || !message) return;
+
+    const isSelf = !!message.isOutgoing;
+    const senderUuid = isSelf ? this.profile.uuid : this.currentDmPeer.uuid;
+    const senderNickname = isSelf ? 'MOI' : this.currentDmPeer.nickname;
+    const previewText =
+      message.type === 'snap'
+        ? message.mediaType === 'video'
+          ? 'Snap Vidéo'
+          : 'Snap Photo'
+        : message.text || '';
+
+    this.replyingTo = {
+      id: message.id,
+      senderUuid,
+      senderNickname,
+      text: previewText
+    };
+
+    const replyBar = document.getElementById('dm-reply-bar');
+    const accent = document.getElementById('dm-reply-accent');
+    const author = document.getElementById('dm-reply-author');
+    const textEl = document.getElementById('dm-reply-text');
+
+    if (accent) accent.classList.toggle('self', isSelf);
+    if (author) {
+      author.classList.toggle('self', isSelf);
+      author.textContent = `Réponse à ${senderNickname}`;
+    }
+    if (textEl) textEl.textContent = previewText;
+    if (replyBar) replyBar.classList.remove('hidden');
+
+    document.getElementById('dm-input')?.focus();
+  }
+
+  clearReplyTarget() {
+    this.replyingTo = null;
+    const replyBar = document.getElementById('dm-reply-bar');
+    if (replyBar) replyBar.classList.add('hidden');
+  }
+
+  async toggleMessageSave(message) {
+    if (!this.currentDmPeer || !message) return;
+    message.saved = !message.saved;
+    if (message.saved) {
+      await storage.saveChatMessage(this.currentDmPeer.uuid, message);
+      this.showToast('Message enregistré dans le chat');
+    } else {
+      await storage.unsaveChatMessage(this.currentDmPeer.uuid, message.id);
+      this.showToast('Message désenregistré');
+    }
+  }
+
+  attachMessageInteractions(el, message, isSnap, onShortClick) {
+    let longPressTimer = null;
+    let startX = 0;
+    let startY = 0;
+    let didLongPress = false;
+
+    // Clic droit sur PC
+    el.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
+      this.showContextMenu(e.clientX, e.clientY, message, isSnap);
+    });
+
+    // Appui long tactile sur mobile (>= 420ms)
+    el.addEventListener(
+      'touchstart',
+      (e) => {
+        if (e.touches.length !== 1) return;
+        didLongPress = false;
+        const touch = e.touches[0];
+        startX = touch.clientX;
+        startY = touch.clientY;
+        longPressTimer = setTimeout(() => {
+          didLongPress = true;
+          if (navigator.vibrate) navigator.vibrate(25);
+          this.showContextMenu(startX, startY, message, isSnap);
+        }, 420);
+      },
+      { passive: true }
+    );
+
+    el.addEventListener(
+      'touchmove',
+      (e) => {
+        if (!longPressTimer || e.touches.length !== 1) return;
+        const dx = Math.abs(e.touches[0].clientX - startX);
+        const dy = Math.abs(e.touches[0].clientY - startY);
+        if (dx > 10 || dy > 10) {
+          clearTimeout(longPressTimer);
+          longPressTimer = null;
+        }
+      },
+      { passive: true }
+    );
+
+    const cancelTouch = () => {
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
+    };
+    el.addEventListener('touchend', cancelTouch, { passive: true });
+    el.addEventListener('touchcancel', cancelTouch, { passive: true });
+
+    el.addEventListener('click', (e) => {
+      if (didLongPress) {
+        didLongPress = false;
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      // Ne pas déclencher l'action clic si l'utilisateur vient de surligner du texte à la souris
+      const selection = window.getSelection()?.toString();
+      if (selection && selection.length > 0) return;
+
+      if (onShortClick) onShortClick(e);
+    });
+  }
+
   openDmWith(peer) {
     this.currentDmPeer = peer;
+    this.clearReplyTarget();
+    this.hideContextMenu();
+
     const dmView = document.getElementById('dm-view');
     const appContainer = document.getElementById('app-container');
     const avatar = document.getElementById('dm-peer-avatar');
@@ -631,7 +884,7 @@ class SnapApp {
       container.innerHTML = `
         <div style="text-align:center;color:var(--snap-gray-text);font-size:12px;margin:auto;">
           C'est le début de votre discussion avec <strong>${this.currentDmPeer.nickname}</strong>.
-          <br>Les messages et Snaps non enregistrés disparaissent après lecture !
+          <br>Clic droit (PC) ou appui long (mobile) sur un message pour y répondre !
         </div>`;
       return;
     }
@@ -640,6 +893,7 @@ class SnapApp {
       if (m.type === 'snap') {
         const snapCard = document.createElement('div');
         snapCard.className = `dm-snap-card ${m.isOutgoing ? 'outgoing' : 'incoming'}`;
+        if (m.id) snapCard.dataset.msgId = m.id;
 
         const isOpened = m.isOpened;
         const iconClass = isOpened
@@ -670,30 +924,79 @@ class SnapApp {
           </div>
         `;
 
-        if (!m.isOutgoing && !isOpened && m.mediaData) {
-          snapCard.onclick = () => {
+        this.attachMessageInteractions(snapCard, m, true, () => {
+          if (!m.isOutgoing && !isOpened && m.mediaData) {
             viewer.openSnap(m);
-          };
-        }
+          }
+        });
 
         container.appendChild(snapCard);
       } else {
         const bubble = document.createElement('div');
         bubble.className = `chat-bubble ${m.isOutgoing ? 'outgoing' : 'incoming'} ${m.saved ? 'saved' : ''}`;
-        bubble.textContent = m.text;
+        if (m.id) bubble.dataset.msgId = m.id;
+        bubble.title = 'Clic droit / Appui long : Répondre • Clic : Enregistrer';
 
-        bubble.title = 'Toucher pour enregistrer dans le chat';
-        bubble.onclick = async () => {
-          m.saved = !m.saved;
+        // En-tête auteur + heure (style Snapchat Web)
+        const meta = document.createElement('div');
+        meta.className = 'chat-msg-meta';
+        const senderSpan = document.createElement('span');
+        senderSpan.className = `chat-msg-sender ${m.isOutgoing ? 'self' : 'peer'}`;
+        senderSpan.textContent = m.isOutgoing ? 'MOI' : this.currentDmPeer.nickname;
+        const timeSpan = document.createElement('span');
+        timeSpan.className = 'chat-msg-time';
+        if (m.timestamp) {
+          timeSpan.textContent = new Date(m.timestamp).toLocaleTimeString('fr-FR', {
+            hour: '2-digit',
+            minute: '2-digit'
+          });
+        }
+        meta.appendChild(senderSpan);
+        meta.appendChild(timeSpan);
+        bubble.appendChild(meta);
+
+        // Bloc citation si le message est une réponse
+        if (m.replyTo && m.replyTo.text) {
+          const quoteBox = document.createElement('div');
+          const isQuoteSelf = m.replyTo.senderUuid === this.profile.uuid;
+          quoteBox.className = `chat-quote-box ${isQuoteSelf ? 'quote-self' : ''}`;
+
+          const quoteAuthor = document.createElement('div');
+          quoteAuthor.className = 'chat-quote-author';
+          quoteAuthor.textContent = isQuoteSelf ? 'MOI' : (m.replyTo.senderNickname || this.currentDmPeer.nickname);
+
+          const quoteText = document.createElement('div');
+          quoteText.className = 'chat-quote-text';
+          quoteText.textContent = m.replyTo.text;
+
+          quoteBox.appendChild(quoteAuthor);
+          quoteBox.appendChild(quoteText);
+
+          // Cliquer sur la citation fait défiler vers le message original
+          quoteBox.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (!m.replyTo.id) return;
+            const targetEl = container.querySelector(`[data-msg-id="${m.replyTo.id}"]`);
+            if (targetEl) {
+              targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              targetEl.classList.add('highlight-flash');
+              setTimeout(() => targetEl.classList.remove('highlight-flash'), 1200);
+            }
+          });
+
+          bubble.appendChild(quoteBox);
+        }
+
+        // Corps du message
+        const bodyEl = document.createElement('div');
+        bodyEl.className = 'chat-msg-body';
+        bodyEl.textContent = m.text;
+        bubble.appendChild(bodyEl);
+
+        this.attachMessageInteractions(bubble, m, false, async () => {
+          await this.toggleMessageSave(m);
           bubble.classList.toggle('saved', m.saved);
-          if (m.saved) {
-            await storage.saveChatMessage(this.currentDmPeer.uuid, m);
-            this.showToast('Message enregistré dans le chat');
-          } else {
-            await storage.unsaveChatMessage(this.currentDmPeer.uuid, m.id);
-            this.showToast('Message désenregistré');
-          }
-        };
+        });
 
         container.appendChild(bubble);
       }

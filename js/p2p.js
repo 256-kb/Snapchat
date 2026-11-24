@@ -510,12 +510,13 @@ export class P2PNetwork {
     return responsePacket;
   }
 
-  sendMessage(targetUuid, text, ephemeral = true) {
+  sendMessage(targetUuid, text, ephemeral = true, replyTo = null) {
     const messagePayload = {
       id: 'msg_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
       senderUuid: this.myProfile.uuid,
       targetUuid,
       text,
+      replyTo: replyTo || null,
       timestamp: Date.now(),
       ephemeral: !!ephemeral
     };
