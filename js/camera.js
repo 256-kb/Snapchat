@@ -34,15 +34,27 @@ export class CameraEngine {
     return await this.startStream();
   }
 
+  updateCameraUI(hasAccess) {
+    if (this.videoElement) {
+      this.videoElement.classList.toggle('mirrored', this.facingMode === 'user');
+    }
+    const placeholder = document.getElementById('camera-placeholder');
+    if (placeholder) {
+      placeholder.classList.toggle('hidden', !!hasAccess);
+    }
+  }
+
   /**
    * Démarre ou redémarre le flux vidéo avec les contraintes actuelles
    */
   async startStream() {
     this.stopStream();
+    this.updateCameraUI(false);
 
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       console.warn('getUserMedia non supporté dans cet environnement.');
       this.hasCameraAccess = false;
+      this.updateCameraUI(false);
       if (this.onCameraStateChange) this.onCameraStateChange({ hasAccess: false });
       return false;
     }
@@ -63,6 +75,7 @@ export class CameraEngine {
         await this.videoElement.play();
       }
       this.hasCameraAccess = true;
+      this.updateCameraUI(true);
       if (this.onCameraStateChange) this.onCameraStateChange({ hasAccess: true, facingMode: this.facingMode });
       return true;
     } catch (err) {
@@ -78,11 +91,13 @@ export class CameraEngine {
           await this.videoElement.play();
         }
         this.hasCameraAccess = true;
+        this.updateCameraUI(true);
         if (this.onCameraStateChange) this.onCameraStateChange({ hasAccess: true, facingMode: this.facingMode });
         return true;
       } catch (err2) {
         console.warn('Accès caméra définitivement indisponible (ou environnement restreint):', err2);
         this.hasCameraAccess = false;
+        this.updateCameraUI(false);
         if (this.onCameraStateChange) this.onCameraStateChange({ hasAccess: false, error: err2.message });
         return false;
       }

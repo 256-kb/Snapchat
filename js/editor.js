@@ -42,6 +42,7 @@ export class SnapEditor {
 
   init(elements) {
     this.container = elements.container;
+    this.stage = elements.stage || document.getElementById('editor-stage') || elements.container;
     this.previewImg = elements.previewImg;
     this.previewVideo = elements.previewVideo;
     this.drawingCanvas = elements.drawingCanvas;
@@ -51,6 +52,12 @@ export class SnapEditor {
 
     this.setupDrawingListeners();
     this.setupBannerListeners();
+
+    window.addEventListener('resize', () => {
+      if (this.container && !this.container.classList.contains('hidden')) {
+        this.resizeCanvas();
+      }
+    });
   }
 
   open(media) {
@@ -63,17 +70,45 @@ export class SnapEditor {
     this.isDrawingMode = false;
     this.currentTimerIndex = 3;
 
+    // Réinitialiser l'état visuel du pinceau / texte
+    document.getElementById('editor-pen-btn')?.classList.remove('active');
+    document.getElementById('editor-color-palette')?.classList.add('hidden');
+    if (this.drawingCanvas) {
+      this.drawingCanvas.style.pointerEvents = 'none';
+    }
+    if (this.textBanner) {
+      this.textBanner.classList.add('hidden');
+    }
     if (this.bannerInput) {
       this.bannerInput.value = '';
     }
+    if (this.stage) {
+      this.stage.classList.remove('landscape');
+    }
+
+    // Afficher d'abord le conteneur pour mesurer les vraies dimensions du stage
+    this.container.classList.remove('hidden');
+    this.container.style.display = 'flex';
 
     if (this.mediaType === 'photo') {
+      this.previewImg.onload = () => {
+        if (this.stage && this.previewImg.naturalWidth > this.previewImg.naturalHeight) {
+          this.stage.classList.add('landscape');
+        }
+        requestAnimationFrame(() => this.resizeCanvas());
+      };
       this.previewImg.src = this.mediaData;
       this.previewImg.style.display = 'block';
       this.previewVideo.style.display = 'none';
       this.previewVideo.pause();
     } else {
       this.previewImg.style.display = 'none';
+      this.previewVideo.onloadedmetadata = () => {
+        if (this.stage && this.previewVideo.videoWidth > this.previewVideo.videoHeight) {
+          this.stage.classList.add('landscape');
+        }
+        requestAnimationFrame(() => this.resizeCanvas());
+      };
       this.previewVideo.src = this.mediaData;
       this.previewVideo.style.display = 'block';
       this.previewVideo.loop = true;
@@ -83,9 +118,6 @@ export class SnapEditor {
     this.resizeCanvas();
     this.updateBannerPosition();
     this.updateTimerDisplay();
-
-    this.container.classList.remove('hidden');
-    this.container.style.display = 'flex';
   }
 
   close() {
@@ -102,10 +134,13 @@ export class SnapEditor {
   }
 
   resizeCanvas() {
-    const rect = this.container.getBoundingClientRect();
-    this.drawingCanvas.width = rect.width;
-    this.drawingCanvas.height = rect.height;
-    this.redrawAllStrokes();
+    const target = this.drawingCanvas.parentElement || this.stage || this.container;
+    const rect = target.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      this.drawingCanvas.width = rect.width;
+      this.drawingCanvas.height = rect.height;
+      this.redrawAllStrokes();
+    }
   }
 
   setupDrawingListeners() {
@@ -222,7 +257,7 @@ export class SnapEditor {
     const onPointerMove = (e) => {
       if (!this.isDraggingBanner) return;
       const deltaY = e.clientY - this.dragStartY;
-      const parentHeight = this.container.clientHeight || window.innerHeight;
+      const parentHeight = (this.stage && this.stage.clientHeight) || this.container.clientHeight || window.innerHeight;
       const percentDelta = (deltaY / parentHeight) * 100;
       let newY = this.initialBannerY + percentDelta;
 
@@ -316,10 +351,30 @@ export class SnapEditor {
 
         ctx.drawImage(img, 0, 0);
 
-        if (this.strokeHistory.length > 0) {
-          const scaleX = canvas.width / this.drawingCanvas.width;
-          const scaleY = canvas.height / this.drawingCanvas.height;
+        // Calcul du rectangle réel rendu par object-fit: contain dans le canvas de dessin
+        const cw = this.drawingCanvas.width || 1;
+        const ch = this.drawingCanvas.height || 1;
+        const imgAspect = img.width / img.height;
+        const boxAspect = cw / ch;
+        let rw = cw;
+        let rh = ch;
+        let ox = 0;
+        let oy = 0;
 
+        if (imgAspect > boxAspect) {
+          rw = cw;
+          rh = cw / imgAspect;
+          oy = (ch - rh) / 2;
+        } else {
+          rh = ch;
+          rw = ch * imgAspect;
+          ox = (cw - rw) / 2;
+        }
+
+        const scaleX = canvas.width / rw;
+        const scaleY = canvas.height / rh;
+
+        if (this.strokeHistory.length > 0) {
           this.strokeHistory.forEach((stroke) => {
             if (stroke.points.length < 1) return;
             ctx.beginPath();
@@ -328,9 +383,9 @@ export class SnapEditor {
             ctx.lineCap = 'round';
             ctx.lineJoin = 'round';
 
-            ctx.moveTo(stroke.points[0].x * scaleX, stroke.points[0].y * scaleY);
+            ctx.moveTo((stroke.points[0].x - ox) * scaleX, (stroke.points[0].y - oy) * scaleY);
             for (let i = 1; i < stroke.points.length; i++) {
-              ctx.lineTo(stroke.points[i].x * scaleX, stroke.points[i].y * scaleY);
+              ctx.lineTo((stroke.points[i].x - ox) * scaleX, (stroke.points[i].y - oy) * scaleY);
             }
             ctx.stroke();
           });
@@ -338,8 +393,9 @@ export class SnapEditor {
 
         const text = this.bannerText.trim();
         if (text) {
-          const bannerYPixels = (this.bannerY / 100) * canvas.height;
-          const bannerHeight = Math.max(50, canvas.height * 0.055);
+          const bannerInBoxY = (this.bannerY / 100) * ch;
+          const bannerYPixels = Math.max(30, Math.min(canvas.height - 30, (bannerInBoxY - oy) * scaleY));
+          const bannerHeight = Math.max(50, canvas.height * 0.06);
 
           ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
           ctx.fillRect(0, bannerYPixels - bannerHeight / 2, canvas.width, bannerHeight);
@@ -369,7 +425,8 @@ export class SnapEditor {
       mediaType: this.mediaType,
       mediaData: finalMediaData,
       timer: this.getSelectedTimer(),
-      bannerText: this.bannerText,
+      // Pour la photo, le texte est déjà incrusté dans l'image; pour la vidéo, on le garde en overlay
+      bannerText: this.mediaType === 'video' ? this.bannerText : '',
       bannerY: this.bannerY
     };
   }

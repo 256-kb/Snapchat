@@ -151,6 +151,37 @@ input, textarea, button {
   pointer-events: auto;
 }
 
+.top-header-sidebar {
+  display: contents;
+}
+
+.header-left-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.desktop-only-pseudo,
+.desktop-only-btn {
+  display: none;
+}
+
+/* Scrollbar discrète pour PC */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 252, 0, 0.45);
+}
+
 .header-avatar-btn {
   width: 40px;
   height: 40px;
@@ -251,6 +282,45 @@ input, textarea, button {
   height: 100%;
   object-fit: cover;
   background: #000;
+}
+
+#camera-video.mirrored {
+  transform: scaleX(-1);
+}
+
+.camera-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 24px;
+  gap: 12px;
+  background: radial-gradient(circle at center, #1e1e26 0%, #09090b 75%);
+  color: var(--snap-gray-text);
+  z-index: 5;
+  pointer-events: none;
+}
+
+.svg-placeholder-icon {
+  width: 64px;
+  height: 64px;
+  color: var(--snap-yellow);
+  opacity: 0.85;
+}
+
+.camera-placeholder-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: #fff;
+}
+
+.camera-placeholder-sub {
+  font-size: 13px;
+  max-width: 300px;
+  line-height: 1.5;
 }
 
 /* Flash Simulé */
@@ -516,11 +586,18 @@ input, textarea, button {
   background: #242429;
 }
 
+.user-item.active-chat {
+  background: rgba(255, 252, 0, 0.1);
+  border-color: rgba(255, 252, 0, 0.45);
+}
+
 .user-left {
   display: flex;
   align-items: center;
   gap: 14px;
   overflow: hidden;
+  min-width: 0;
+  flex: 1;
 }
 
 .user-avatar-wrap {
@@ -554,6 +631,8 @@ input, textarea, button {
   flex-direction: column;
   gap: 3px;
   overflow: hidden;
+  min-width: 0;
+  flex: 1;
 }
 
 .user-nickname {
@@ -571,6 +650,13 @@ input, textarea, button {
   display: flex;
   align-items: center;
   gap: 5px;
+  line-height: 1.4;
+}
+
+.user-text-info .user-status-msg {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Indicateurs d'état des snaps / chats */
@@ -604,6 +690,7 @@ input, textarea, button {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .btn-friend {
@@ -619,6 +706,8 @@ input, textarea, button {
   display: flex;
   align-items: center;
   gap: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .btn-friend.is-friend {
@@ -627,17 +716,27 @@ input, textarea, button {
   color: var(--snap-gray-text);
 }
 
-/* Vue DM Dédiée (Conversation privée) */
+/* Masquer top-header et bottom-nav quand on est en conversation privée */
+#app-container.in-dm .top-header,
+#app-container.in-dm #bottom-nav {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transform: translateY(-20px);
+}
+
+/* Vue DM Dédiée (Conversation privée - Plein Écran sans chevauchement) */
 #dm-view {
   position: absolute;
   inset: 0;
+  width: 100%;
+  height: 100%;
   background: var(--snap-dark);
-  z-index: 60;
+  z-index: 80;
   display: flex;
   flex-direction: column;
   transform: translateX(100%);
   transition: transform 0.28s cubic-bezier(0.2, 0.9, 0.3, 1);
-  padding-bottom: var(--safe-bottom);
+  overflow: hidden;
 }
 
 #dm-view.active {
@@ -645,7 +744,7 @@ input, textarea, button {
 }
 
 .dm-header {
-  padding-top: calc(10px + var(--safe-top));
+  padding-top: calc(14px + var(--safe-top));
   padding-bottom: 12px;
   padding-left: 16px;
   padding-right: 16px;
@@ -654,6 +753,8 @@ input, textarea, button {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-shrink: 0;
+  z-index: 85;
 }
 
 .dm-user-profile {
@@ -798,9 +899,11 @@ input, textarea, button {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 16px;
+  padding: 10px 16px calc(14px + var(--safe-bottom));
   background: var(--snap-dark-card);
   border-top: 1px solid var(--snap-dark-border);
+  flex-shrink: 0;
+  z-index: 85;
 }
 
 .dm-input {
@@ -886,7 +989,18 @@ input, textarea, button {
   z-index: 100;
   display: none;
   flex-direction: column;
+  align-items: center;
+  justify-content: center;
   overflow: hidden;
+}
+
+.editor-stage,
+.viewer-stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
 }
 
 .editor-media-layer {
@@ -901,7 +1015,8 @@ input, textarea, button {
 #editor-preview-video {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
+  background: #000;
 }
 
 #editor-drawing-canvas {
@@ -1308,13 +1423,324 @@ input, textarea, button {
   display: none !important;
 }
 
-/* Responsive Tablet / Desktop */
-@media (min-width: 600px) {
+/* Hover feedback global pour curseur PC */
+@media (hover: hover) {
+  .icon-btn:hover {
+    background: rgba(54, 54, 62, 0.95);
+    border-color: rgba(255, 255, 255, 0.3);
+  }
+  .icon-btn.active:hover {
+    background: var(--snap-yellow-hover);
+  }
+  .btn-sm:hover {
+    background: var(--snap-yellow-hover);
+  }
+  .btn-primary:hover {
+    background: var(--snap-yellow-hover);
+  }
+  .btn-secondary:hover {
+    background: #33333c;
+  }
+  .btn-danger:hover {
+    background: rgba(233, 39, 84, 0.25);
+  }
+  .btn-friend:hover:not(.is-friend) {
+    background: rgba(255, 252, 0, 0.28);
+  }
+  .shutter-btn:hover {
+    transform: scale(1.04);
+  }
+  .camera-side-action:hover {
+    background: rgba(44, 44, 52, 0.9);
+  }
+  .chat-bubble:hover {
+    filter: brightness(1.12);
+  }
+  .header-avatar-btn:hover {
+    transform: scale(1.06);
+  }
+}
+
+/* Tablette étroite / Grand mobile (600px - 859px) */
+@media (min-width: 600px) and (max-width: 859px) {
   #app-container {
     max-width: 440px;
     margin: 0 auto;
     border-left: 1px solid #222;
     border-right: 1px solid #222;
     box-shadow: 0 0 50px rgba(0,0,0,0.8);
+  }
+}
+
+/* ==========================================================================
+   VERSION PC / DESKTOP (>= 860px) — Layout Split-View 2 Colonnes
+   ========================================================================== */
+@media (min-width: 860px) {
+  :root {
+    --sidebar-width: clamp(350px, 28vw, 410px);
+  }
+
+  #app-container {
+    width: 100%;
+    max-width: none;
+    height: 100dvh;
+    display: flex;
+    flex-direction: row;
+    background-color: #09090b;
+  }
+
+  /* Masquer la barre de navigation mobile en bas */
+  #bottom-nav {
+    display: none !important;
+  }
+
+  /* Barre supérieure adaptée à la sidebar + actions caméra à droite */
+  .top-header {
+    height: 64px;
+    padding: 0;
+    align-items: flex-start;
+    justify-content: flex-start;
+  }
+
+  .top-header-sidebar {
+    width: var(--sidebar-width);
+    height: 64px;
+    padding: 0 18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    background: var(--snap-dark);
+    border-right: 1px solid var(--snap-dark-border);
+    border-bottom: 1px solid var(--snap-dark-border);
+    flex-shrink: 0;
+  }
+
+  .desktop-only-pseudo {
+    display: inline-block;
+    font-weight: 800;
+    font-size: 15px;
+    color: #fff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 135px;
+  }
+
+  .header-room-pill {
+    max-width: 155px;
+    padding: 5px 11px;
+    font-size: 12px;
+  }
+
+  .header-room-pill span:last-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .header-actions {
+    margin: 36px 36px 0 auto;
+    padding-right: 0;
+    transition: opacity 0.2s;
+  }
+
+  /* Sur PC, garder l'entête de la sidebar visible même lorsqu'un DM est ouvert à droite */
+  #app-container.in-dm .top-header {
+    opacity: 1 !important;
+    pointer-events: none !important;
+    transform: none !important;
+  }
+
+  #app-container.in-dm .top-header .top-header-sidebar {
+    pointer-events: auto !important;
+  }
+
+  #app-container.in-dm .top-header .header-actions {
+    opacity: 0 !important;
+    pointer-events: none !important;
+  }
+
+  /* Rail horizontal désactivé : affichage côte à côte Sidebar + Scène Caméra */
+  #screens-track {
+    width: 100% !important;
+    height: 100%;
+    transform: none !important;
+    transition: none !important;
+    display: flex;
+    flex-direction: row;
+  }
+
+  /* Colonne Gauche : Chat & Amis */
+  #chat-screen {
+    width: var(--sidebar-width);
+    flex-shrink: 0;
+    height: 100%;
+    padding-top: 64px;
+    padding-bottom: 0;
+    border-right: 1px solid var(--snap-dark-border);
+    background-color: var(--snap-dark);
+  }
+
+  .screen-header-title {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 14px 16px 12px;
+  }
+
+  .screen-header-title h1 {
+    font-size: 20px;
+    white-space: nowrap;
+  }
+
+  .screen-header-title > div {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .screen-header-title > div > button {
+    flex: 1;
+    padding: 8px 10px;
+    justify-content: center;
+  }
+
+  .desktop-only-btn {
+    display: inline-flex;
+  }
+
+  /* Colonne Droite : Scène Caméra Desktop */
+  #camera-screen {
+    flex: 1;
+    width: auto !important;
+    height: 100%;
+    padding: 20px;
+    background: #09090b;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .camera-viewport {
+    width: 100%;
+    height: 100%;
+    border-radius: 24px;
+    border: 1px solid var(--snap-dark-border);
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.7);
+    background: #000;
+  }
+
+  .camera-bottom-controls {
+    bottom: 28px;
+    max-width: 360px;
+    margin: 0 auto;
+  }
+
+  #camera-quick-chat {
+    visibility: hidden;
+    pointer-events: none;
+  }
+
+  /* Vue DM intégrée dans le panneau droit uniquement */
+  #dm-view {
+    left: var(--sidebar-width);
+    width: calc(100% - var(--sidebar-width));
+    top: 0;
+    bottom: 0;
+    right: 0;
+    z-index: 60;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateY(14px);
+    transition: opacity 0.2s ease, transform 0.22s ease, visibility 0.2s;
+  }
+
+  #dm-view.active {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: translateY(0);
+  }
+
+  .dm-header {
+    height: 64px;
+    padding: 0 24px;
+  }
+
+  .dm-messages-container {
+    padding: 24px 32px;
+    gap: 12px;
+  }
+
+  .chat-bubble {
+    max-width: 60%;
+  }
+
+  .dm-input-bar {
+    padding: 14px 24px;
+  }
+
+  /* Modales centrées façon Desktop */
+  .modal-backdrop {
+    align-items: center;
+    padding: 24px;
+  }
+
+  .modal-content {
+    border-radius: 24px;
+    border: 1px solid var(--snap-dark-border);
+    max-width: 460px;
+    padding: 26px 24px;
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.85);
+    animation: popInModal 0.2s cubic-bezier(0.2, 0.9, 0.3, 1);
+  }
+
+  @keyframes popInModal {
+    from { opacity: 0; transform: scale(0.95) translateY(8px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+  }
+
+  /* Éditeur et Visionneuse encadrés au centre avec fond cinéma */
+  #snap-editor-overlay,
+  #snap-viewer-overlay {
+    background: rgba(6, 6, 8, 0.92);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    padding: 24px;
+  }
+
+  .editor-stage,
+  .viewer-stage {
+    width: min(90vw, 480px);
+    height: min(90vh, 820px);
+    border-radius: 24px;
+    border: 1px solid var(--snap-dark-border);
+    box-shadow: 0 25px 75px rgba(0, 0, 0, 0.9);
+  }
+
+  .editor-stage.landscape,
+  .viewer-stage.landscape {
+    width: min(88vw, 880px);
+    height: auto;
+    aspect-ratio: 16 / 9;
+    max-height: 88vh;
+  }
+
+  .editor-top-bar {
+    top: 0;
+  }
+
+  .editor-tools-sidebar {
+    top: 70px;
+  }
+
+  #editor-color-palette {
+    top: 70px;
+  }
+
+  .editor-bottom-bar {
+    bottom: 16px;
   }
 }

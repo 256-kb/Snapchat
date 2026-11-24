@@ -34,12 +34,14 @@ class SnapApp {
 
     this.bindSwipeGestures();
     this.bindBottomNav();
+    this.bindDesktopControls();
     this.bindModals();
     this.bindCameraControls();
     this.bindEditorControls();
     this.bindViewerEvents();
     this.bindDmEvents();
     this.bindFriendRequestEvents();
+    this.bindKeyboardShortcuts();
 
     this.profile = await storage.getProfile();
     if (!this.profile) {
@@ -80,11 +82,13 @@ class SnapApp {
   updateProfileUI() {
     if (!this.profile) return;
     const avatarEl = document.getElementById('top-avatar-img');
+    const pseudoEl = document.getElementById('top-user-pseudo');
     const profileModalAvatar = document.getElementById('profile-modal-avatar');
     const profileModalNickname = document.getElementById('profile-modal-nickname');
     const profileModalUuid = document.getElementById('profile-modal-uuid');
 
     if (avatarEl) avatarEl.src = this.profile.avatar;
+    if (pseudoEl) pseudoEl.textContent = this.profile.nickname;
     if (profileModalAvatar) profileModalAvatar.src = this.profile.avatar;
     if (profileModalNickname) profileModalNickname.textContent = this.profile.nickname;
     if (profileModalUuid) profileModalUuid.textContent = `UUID: ${this.profile.uuid}`;
@@ -92,7 +96,7 @@ class SnapApp {
 
   /**
    * =========================================================================
-   * NAVIGATION PAR SWIPE TACTILE & BARRE DU BAS (2 ÉCRANS)
+   * NAVIGATION PAR SWIPE TACTILE, BARRE DU BAS & DESKTOP SPLIT-VIEW
    * =========================================================================
    */
   bindSwipeGestures() {
@@ -100,6 +104,7 @@ class SnapApp {
     const container = document.getElementById('app-container');
 
     container.addEventListener('touchstart', (e) => {
+      if (window.innerWidth >= 860) return;
       if (
         document.getElementById('dm-view').classList.contains('active') ||
         !document.getElementById('snap-editor-overlay').classList.contains('hidden') ||
@@ -117,7 +122,7 @@ class SnapApp {
     }, { passive: true });
 
     container.addEventListener('touchmove', (e) => {
-      if (!this.isSwiping) return;
+      if (!this.isSwiping || window.innerWidth >= 860) return;
       this.touchCurrentX = e.touches[0].clientX;
       const deltaX = this.touchCurrentX - this.touchStartX;
       const deltaY = e.touches[0].clientY - this.touchStartY;
@@ -135,7 +140,7 @@ class SnapApp {
     }, { passive: true });
 
     container.addEventListener('touchend', (e) => {
-      if (!this.isSwiping) return;
+      if (!this.isSwiping || window.innerWidth >= 860) return;
       this.isSwiping = false;
       track.style.transition = 'transform 0.3s cubic-bezier(0.2, 0.9, 0.3, 1)';
 
@@ -150,6 +155,21 @@ class SnapApp {
         this.goToScreen(this.currentScreenIndex);
       }
     }, { passive: true });
+
+    // Adaptation dynamique lors du redimensionnement PC <-> Mobile
+    window.addEventListener('resize', () => {
+      if (window.innerWidth >= 860) {
+        track.style.transition = '';
+        track.style.transform = '';
+        const headerActions = document.querySelector('.header-actions');
+        if (headerActions) {
+          headerActions.style.opacity = '1';
+          headerActions.style.pointerEvents = 'auto';
+        }
+      } else {
+        this.goToScreen(this.currentScreenIndex);
+      }
+    });
   }
 
   bindBottomNav() {
@@ -162,19 +182,81 @@ class SnapApp {
     });
   }
 
+  bindDesktopControls() {
+    const desktopCamBtn = document.getElementById('desktop-cam-btn');
+    if (desktopCamBtn) {
+      desktopCamBtn.addEventListener('click', () => {
+        this.goToScreen(1);
+      });
+    }
+  }
+
+  bindKeyboardShortcuts() {
+    window.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+
+      if (viewer.isOpen) {
+        viewer.closeAndPurge();
+        return;
+      }
+
+      const openModals = Array.from(document.querySelectorAll('.modal-backdrop')).filter(
+        (m) => m.style.display === 'flex' && m.id !== 'onboarding-modal'
+      );
+      if (openModals.length > 0) {
+        openModals.forEach((m) => (m.style.display = 'none'));
+        return;
+      }
+
+      const editorEl = document.getElementById('snap-editor-overlay');
+      if (editorEl && !editorEl.classList.contains('hidden')) {
+        editor.close();
+        return;
+      }
+
+      if (window.innerWidth >= 860 && document.getElementById('dm-view').classList.contains('active')) {
+        this.goToScreen(1);
+      }
+    });
+  }
+
   goToScreen(index) {
     this.currentScreenIndex = Math.max(0, Math.min(1, index));
+    const isDesktop = window.innerWidth >= 860;
     const track = document.getElementById('screens-track');
-    const targetPercent = -this.currentScreenIndex * 50;
-    track.style.transition = 'transform 0.3s cubic-bezier(0.2, 0.9, 0.3, 1)';
-    track.style.transform = `translateX(${targetPercent}%)`;
+
+    if (isDesktop) {
+      track.style.transition = '';
+      track.style.transform = '';
+      // Sur PC, basculer vers la caméra ferme le DM actif pour révéler la scène caméra à droite
+      if (this.currentScreenIndex === 1 && this.currentDmPeer) {
+        document.getElementById('dm-view').classList.remove('active');
+        document.getElementById('app-container').classList.remove('in-dm');
+        this.currentDmPeer = null;
+        this.renderFriendsList();
+        this.renderOnlinePeers();
+      }
+    } else {
+      const targetPercent = -this.currentScreenIndex * 50;
+      track.style.transition = 'transform 0.3s cubic-bezier(0.2, 0.9, 0.3, 1)';
+      track.style.transform = `translateX(${targetPercent}%)`;
+    }
 
     document.querySelectorAll('.nav-tab').forEach((tab) => {
       const tabIdx = parseInt(tab.dataset.index, 10);
       tab.classList.toggle('active', tabIdx === this.currentScreenIndex);
     });
 
-    if (this.currentScreenIndex === 1) {
+    // Masquer les actions caméra (flash/flip) sur l'écran Chat mobile uniquement
+    const headerActions = document.querySelector('.header-actions');
+    if (headerActions) {
+      const showCamActions = isDesktop || this.currentScreenIndex === 1;
+      headerActions.style.opacity = showCamActions ? '1' : '0';
+      headerActions.style.pointerEvents = showCamActions ? 'auto' : 'none';
+      headerActions.style.transition = 'opacity 0.2s';
+    }
+
+    if (isDesktop || this.currentScreenIndex === 1) {
       if (camera.videoElement && camera.stream) {
         camera.videoElement.play().catch(() => {});
       }
@@ -262,6 +344,7 @@ class SnapApp {
   bindEditorControls() {
     editor.init({
       container: document.getElementById('snap-editor-overlay'),
+      stage: document.getElementById('editor-stage'),
       previewImg: document.getElementById('editor-preview-img'),
       previewVideo: document.getElementById('editor-preview-video'),
       drawingCanvas: document.getElementById('editor-drawing-canvas'),
@@ -411,6 +494,7 @@ class SnapApp {
   bindViewerEvents() {
     viewer.init({
       container: document.getElementById('snap-viewer-overlay'),
+      stage: document.getElementById('viewer-stage'),
       img: document.getElementById('viewer-img'),
       video: document.getElementById('viewer-video'),
       banner: document.getElementById('viewer-banner'),
@@ -456,7 +540,10 @@ class SnapApp {
 
     backBtn.addEventListener('click', () => {
       dmView.classList.remove('active');
+      document.getElementById('app-container').classList.remove('in-dm');
       this.currentDmPeer = null;
+      this.renderFriendsList();
+      this.renderOnlinePeers();
     });
 
     dmForm.addEventListener('submit', async (e) => {
@@ -495,6 +582,7 @@ class SnapApp {
     quickSnapBtn.addEventListener('click', () => {
       this.preselectedRecipientUuid = this.currentDmPeer.uuid;
       dmView.classList.remove('active');
+      document.getElementById('app-container').classList.remove('in-dm');
       this.goToScreen(1); // Caméra
       this.showToast(`Prenez un Snap pour ${this.currentDmPeer.nickname}`);
     });
@@ -503,6 +591,7 @@ class SnapApp {
   openDmWith(peer) {
     this.currentDmPeer = peer;
     const dmView = document.getElementById('dm-view');
+    const appContainer = document.getElementById('app-container');
     const avatar = document.getElementById('dm-peer-avatar');
     const name = document.getElementById('dm-peer-name');
     const statusText = document.getElementById('dm-peer-status-text');
@@ -515,8 +604,20 @@ class SnapApp {
     statusText.textContent = isOnline ? 'En ligne' : 'Vu récemment';
     statusDot.style.background = isOnline ? 'var(--snap-green)' : 'var(--snap-gray-text)';
 
+    // Réinitialiser le badge de notification
+    this.unreadChatsCount = 0;
+    const badge = document.getElementById('unread-chat-badge');
+    if (badge) badge.classList.add('hidden');
+
     this.renderDmMessages();
+    appContainer.classList.add('in-dm');
     dmView.classList.add('active');
+    this.renderFriendsList();
+    this.renderOnlinePeers();
+
+    if (window.innerWidth >= 860) {
+      setTimeout(() => document.getElementById('dm-input')?.focus(), 120);
+    }
   }
 
   renderDmMessages() {
@@ -880,7 +981,8 @@ class SnapApp {
       }
 
       const item = document.createElement('div');
-      item.className = 'user-item';
+      const isActive = this.currentDmPeer && this.currentDmPeer.uuid === friend.uuid;
+      item.className = `user-item ${isActive ? 'active-chat' : ''}`;
       item.innerHTML = `
         <div class="user-left">
           <div class="user-avatar-wrap">
@@ -919,7 +1021,8 @@ class SnapApp {
       const isFriend = this.profile.friends?.some((f) => f.uuid === peer.uuid);
 
       const item = document.createElement('div');
-      item.className = 'user-item';
+      const isActive = this.currentDmPeer && this.currentDmPeer.uuid === peer.uuid;
+      item.className = `user-item ${isActive ? 'active-chat' : ''}`;
       item.innerHTML = `
         <div class="user-left">
           <div class="user-avatar-wrap">

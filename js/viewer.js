@@ -31,6 +31,7 @@ export class SnapViewer {
 
   init(elements) {
     this.container = elements.container;
+    this.stage = elements.stage || document.getElementById('viewer-stage');
     this.imgElement = elements.img;
     this.videoElement = elements.video;
     this.bannerElement = elements.banner;
@@ -41,8 +42,7 @@ export class SnapViewer {
     this.timerText = elements.timerText;
 
     // Clic pour passer au suivant ou fermer
-    this.container.addEventListener('click', (e) => {
-      // Éviter de fermer si on clique sur un bouton de menu potentiel
+    this.container.addEventListener('click', () => {
       this.closeAndPurge();
     });
   }
@@ -57,6 +57,10 @@ export class SnapViewer {
 
     this.currentSnap = snap;
     this.isOpen = true;
+
+    if (this.stage) {
+      this.stage.classList.remove('landscape');
+    }
 
     // Infos auteur
     if (this.authorName) {
@@ -73,6 +77,11 @@ export class SnapViewer {
     if (snap.mediaType === 'video') {
       this.imgElement.style.display = 'none';
       this.imgElement.src = '';
+      this.videoElement.onloadedmetadata = () => {
+        if (this.stage && this.videoElement.videoWidth > this.videoElement.videoHeight) {
+          this.stage.classList.add('landscape');
+        }
+      };
       this.videoElement.style.display = 'block';
       this.videoElement.src = snap.mediaData;
       this.videoElement.currentTime = 0;
@@ -80,16 +89,23 @@ export class SnapViewer {
     } else {
       this.videoElement.style.display = 'none';
       this.videoElement.src = '';
+      this.imgElement.onload = () => {
+        if (this.stage && this.imgElement.naturalWidth > this.imgElement.naturalHeight) {
+          this.stage.classList.add('landscape');
+        }
+      };
       this.imgElement.style.display = 'block';
       this.imgElement.src = snap.mediaData;
     }
 
-    // Bandeau de texte incrusté (si non déjà fusionné)
+    // Bandeau de texte incrusté (pour vidéos notamment)
     if (snap.bannerText && snap.bannerText.trim()) {
       this.bannerText.textContent = snap.bannerText;
       this.bannerElement.style.top = `${snap.bannerY || 50}%`;
+      this.bannerElement.classList.remove('hidden');
       this.bannerElement.style.display = 'flex';
     } else {
+      this.bannerElement.classList.add('hidden');
       this.bannerElement.style.display = 'none';
     }
 

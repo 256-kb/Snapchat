@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Snapchat P2P - Clone WebRTC Serverless</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=3.2">
 </head>
 <body>
 
@@ -13,18 +13,23 @@
 
     <!-- Top Bar Flottante Universelle -->
     <header class="top-header">
-      <div id="top-avatar-btn" class="header-avatar-btn" title="Mon Profil & Clé">
-        <img id="top-avatar-img" src="" alt="Avatar">
-      </div>
+      <div class="top-header-sidebar">
+        <div class="header-left-group">
+          <div id="top-avatar-btn" class="header-avatar-btn" title="Mon Profil & Clé">
+            <img id="top-avatar-img" src="" alt="Avatar">
+          </div>
+          <span id="top-user-pseudo" class="desktop-only-pseudo">Profil</span>
+        </div>
 
-      <div id="top-room-pill" class="header-room-pill" title="Changer de Salon">
-        <span class="online-dot"></span>
-        <svg class="svg-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10"></circle>
-          <line x1="2" y1="12" x2="22" y2="12"></line>
-          <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
-        </svg>
-        <span id="top-room-name">Lobby Global</span>
+        <div id="top-room-pill" class="header-room-pill" title="Changer de Salon">
+          <span class="online-dot"></span>
+          <svg class="svg-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="2" y1="12" x2="22" y2="12"></line>
+            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+          </svg>
+          <span id="top-room-name">Lobby Global</span>
+        </div>
       </div>
 
       <div class="header-actions">
@@ -52,7 +57,14 @@
       <section id="chat-screen" class="screen">
         <div class="screen-header-title">
           <h1>Chat & Amis</h1>
-          <div style="display:flex;gap:8px;">
+          <div style="display:flex;gap:8px;align-items:center;">
+            <button id="desktop-cam-btn" class="btn-sm btn-icon-text desktop-only-btn" title="Afficher la Caméra">
+              <svg class="svg-icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                <circle cx="12" cy="13" r="4"></circle>
+              </svg>
+              <span>Caméra</span>
+            </button>
             <button id="btn-add-friend-modal" class="btn-sm btn-icon-text" title="Ajouter un ami par pseudo">
               <svg class="svg-icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
@@ -109,7 +121,15 @@
            ================================================================== -->
       <section id="camera-screen" class="screen">
         <div class="camera-viewport">
-          <video id="camera-video" autoplay playsinline muted></video>
+          <video id="camera-video" class="mirrored" autoplay playsinline muted></video>
+          <div id="camera-placeholder" class="camera-placeholder">
+            <svg class="svg-placeholder-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+              <circle cx="12" cy="13" r="4"></circle>
+            </svg>
+            <div class="camera-placeholder-title">Studio Snap P2P</div>
+            <div class="camera-placeholder-sub">Autorisez la webcam pour filmer, cliquez sur le déclencheur pour un Snap rapide, ou importez un fichier.</div>
+          </div>
           <div id="flash-overlay"></div>
 
           <!-- Contrôles Bas Caméra -->
@@ -218,84 +238,86 @@
        Éditeur de Snap Plein Écran (Post-Capture)
        ====================================================================== -->
   <div id="snap-editor-overlay" class="hidden">
-    <div class="editor-media-layer">
-      <img id="editor-preview-img" src="" alt="Capture Photo" style="display:none;">
-      <video id="editor-preview-video" src="" autoplay loop playsinline muted style="display:none;"></video>
-      <canvas id="editor-drawing-canvas"></canvas>
+    <div id="editor-stage" class="editor-stage">
+      <div class="editor-media-layer">
+        <img id="editor-preview-img" src="" alt="Capture Photo" style="display:none;">
+        <video id="editor-preview-video" src="" autoplay loop playsinline muted style="display:none;"></video>
+        <canvas id="editor-drawing-canvas"></canvas>
 
-      <!-- Bandeau de Texte Déplaçable Verticalement -->
-      <div id="editor-text-banner" class="hidden">
-        <input type="text" id="editor-banner-input" placeholder="Ajouter une légende..." maxlength="120" autocomplete="off">
+        <!-- Bandeau de Texte Déplaçable Verticalement -->
+        <div id="editor-text-banner" class="hidden">
+          <input type="text" id="editor-banner-input" placeholder="Ajouter une légende..." maxlength="120" autocomplete="off">
+        </div>
       </div>
-    </div>
 
-    <!-- Barre d'Outils Haut -->
-    <div class="editor-top-bar">
-      <button id="editor-discard-btn" class="icon-btn" title="Annuler">
-        <svg class="svg-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="18" y1="6" x2="6" y2="18"></line>
-          <line x1="6" y1="6" x2="18" y2="18"></line>
-        </svg>
-      </button>
-      <div style="display:flex;gap:10px;">
-        <button id="editor-download-btn" class="icon-btn" title="Enregistrer localement">
+      <!-- Barre d'Outils Haut -->
+      <div class="editor-top-bar">
+        <button id="editor-discard-btn" class="icon-btn" title="Annuler">
+          <svg class="svg-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+        <div style="display:flex;gap:10px;">
+          <button id="editor-download-btn" class="icon-btn" title="Enregistrer localement">
+            <svg class="svg-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Outils Latéraux Droite -->
+      <div class="editor-tools-sidebar">
+        <button id="editor-text-btn" class="icon-btn" title="Ajouter Texte">
+          <span style="font-weight:900;font-size:18px;">T</span>
+        </button>
+        <button id="editor-pen-btn" class="icon-btn" title="Dessiner (Doodle)">
           <svg class="svg-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-            <polyline points="7 10 12 15 17 10"></polyline>
-            <line x1="12" y1="15" x2="12" y2="3"></line>
+            <path d="M12 19l7-7 3 3-7 7-3-3z"></path>
+            <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path>
+            <path d="M2 2l7.586 7.586"></path>
+            <circle cx="11" cy="11" r="2"></circle>
+          </svg>
+        </button>
+        <button id="editor-timer-btn" class="icon-btn" title="Minuteur Snap">
+          <svg class="svg-icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <polyline points="12 6 12 12 16 14"></polyline>
+          </svg>
+          <span class="timer-val" style="font-size:10px;font-weight:800;margin-top:-2px;">5s</span>
+        </button>
+        <button id="editor-undo-btn" class="icon-btn" title="Annuler trait">
+          <svg class="svg-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="1 4 1 10 7 10"></polyline>
+            <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
           </svg>
         </button>
       </div>
-    </div>
 
-    <!-- Outils Latéraux Droite -->
-    <div class="editor-tools-sidebar">
-      <button id="editor-text-btn" class="icon-btn" title="Ajouter Texte">
-        <span style="font-weight:900;font-size:18px;">T</span>
-      </button>
-      <button id="editor-pen-btn" class="icon-btn" title="Dessiner (Doodle)">
-        <svg class="svg-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 19l7-7 3 3-7 7-3-3z"></path>
-          <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path>
-          <path d="M2 2l7.586 7.586"></path>
-          <circle cx="11" cy="11" r="2"></circle>
-        </svg>
-      </button>
-      <button id="editor-timer-btn" class="icon-btn" title="Minuteur Snap">
-        <svg class="svg-icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="10"></circle>
-          <polyline points="12 6 12 12 16 14"></polyline>
-        </svg>
-        <span class="timer-val" style="font-size:10px;font-weight:800;margin-top:-2px;">5s</span>
-      </button>
-      <button id="editor-undo-btn" class="icon-btn" title="Annuler trait">
-        <svg class="svg-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="1 4 1 10 7 10"></polyline>
-          <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
-        </svg>
-      </button>
-    </div>
+      <!-- Palette de Couleurs Doodle -->
+      <div id="editor-color-palette" class="hidden">
+        <div class="color-dot active" style="background:#FFFC00;" data-color="#FFFC00"></div>
+        <div class="color-dot" style="background:#E92754;" data-color="#E92754"></div>
+        <div class="color-dot" style="background:#9B5DE5;" data-color="#9B5DE5"></div>
+        <div class="color-dot" style="background:#0099FF;" data-color="#0099FF"></div>
+        <div class="color-dot" style="background:#00F5D4;" data-color="#00F5D4"></div>
+        <div class="color-dot" style="background:#FFFFFF;" data-color="#FFFFFF"></div>
+        <div class="color-dot" style="background:#000000;" data-color="#000000"></div>
+      </div>
 
-    <!-- Palette de Couleurs Doodle -->
-    <div id="editor-color-palette" class="hidden">
-      <div class="color-dot active" style="background:#FFFC00;" data-color="#FFFC00"></div>
-      <div class="color-dot" style="background:#E92754;" data-color="#E92754"></div>
-      <div class="color-dot" style="background:#9B5DE5;" data-color="#9B5DE5"></div>
-      <div class="color-dot" style="background:#0099FF;" data-color="#0099FF"></div>
-      <div class="color-dot" style="background:#00F5D4;" data-color="#00F5D4"></div>
-      <div class="color-dot" style="background:#FFFFFF;" data-color="#FFFFFF"></div>
-      <div class="color-dot" style="background:#000000;" data-color="#000000"></div>
-    </div>
-
-    <!-- Barre Inférieure Éditeur -->
-    <div class="editor-bottom-bar">
-      <div></div>
-      <button id="editor-send-btn" class="btn-send-snap">
-        <span>Envoyer à</span>
-        <svg class="svg-icon-sm" viewBox="0 0 24 24" fill="currentColor">
-          <polygon points="5 3 19 12 5 21 5 3"></polygon>
-        </svg>
-      </button>
+      <!-- Barre Inférieure Éditeur -->
+      <div class="editor-bottom-bar">
+        <div></div>
+        <button id="editor-send-btn" class="btn-send-snap">
+          <span>Envoyer à</span>
+          <svg class="svg-icon-sm" viewBox="0 0 24 24" fill="currentColor">
+            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+          </svg>
+        </button>
+      </div>
     </div>
   </div>
 
@@ -303,26 +325,28 @@
        Visionneuse de Snap Plein Écran (Compte à Rebours & Purge Mémoire)
        ====================================================================== -->
   <div id="snap-viewer-overlay" class="hidden">
-    <div class="viewer-header">
-      <div class="viewer-author-info">
-        <img id="viewer-author-avatar" class="viewer-author-avatar" src="" alt="Avatar">
-        <span id="viewer-author-name" class="viewer-author-name">Alex</span>
+    <div id="viewer-stage" class="viewer-stage">
+      <div class="viewer-header">
+        <div class="viewer-author-info">
+          <img id="viewer-author-avatar" class="viewer-author-avatar" src="" alt="Avatar">
+          <span id="viewer-author-name" class="viewer-author-name">Alex</span>
+        </div>
+
+        <!-- Compte à Rebours Circulaire -->
+        <div class="viewer-timer-widget">
+          <svg class="viewer-timer-svg" viewBox="0 0 44 44">
+            <circle id="viewer-timer-ring" class="viewer-timer-ring" cx="22" cy="22" r="18"></circle>
+          </svg>
+          <span id="viewer-timer-number" class="viewer-timer-number">5</span>
+        </div>
       </div>
 
-      <!-- Compte à Rebours Circulaire -->
-      <div class="viewer-timer-widget">
-        <svg class="viewer-timer-svg" viewBox="0 0 44 44">
-          <circle id="viewer-timer-ring" class="viewer-timer-ring" cx="22" cy="22" r="18"></circle>
-        </svg>
-        <span id="viewer-timer-number" class="viewer-timer-number">5</span>
+      <img id="viewer-img" src="" alt="Snap" style="display:none;">
+      <video id="viewer-video" src="" autoplay playsinline style="display:none;"></video>
+
+      <div id="viewer-banner" class="hidden" style="position:absolute;left:0;right:0;transform:translateY(-50%);background:rgba(0,0,0,0.65);padding:10px 16px;text-align:center;font-size:18px;font-weight:800;color:#fff;">
+        <span id="viewer-banner-text"></span>
       </div>
-    </div>
-
-    <img id="viewer-img" src="" alt="Snap" style="display:none;">
-    <video id="viewer-video" src="" autoplay playsinline style="display:none;"></video>
-
-    <div id="viewer-banner" class="hidden" style="position:absolute;left:0;right:0;transform:translateY(-50%);background:rgba(0,0,0,0.65);padding:10px 16px;text-align:center;font-size:18px;font-weight:800;color:#fff;">
-      <span id="viewer-banner-text"></span>
     </div>
   </div>
 
@@ -544,6 +568,6 @@
   <div id="toast-container"></div>
 
   <!-- Scripts JavaScript (Modules ES) -->
-  <script type="module" src="js/app.js?v=2.6"></script>
+  <script type="module" src="js/app.js?v=3.0"></script>
 </body>
 </html>
