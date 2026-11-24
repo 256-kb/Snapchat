@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Snapchat P2P - Clone WebRTC Serverless</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Conteneur Principal (Mobile-First 100dvh) -->
+  <div id="app-container">
+
+    <!-- Top Bar Flottante Universelle -->
+    <header class="top-header">
+      <div id="top-avatar-btn" class="header-avatar-btn" title="Mon Profil & Clé">
+        <img id="top-avatar-img" src="" alt="Avatar">
+      </div>
+
+      <div id="top-room-pill" class="header-room-pill" title="Changer de Salon">
+        <span class="online-dot"></span>
+        <svg class="svg-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="2" y1="12" x2="22" y2="12"></line>
+          <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+        </svg>
+        <span id="top-room-name">Lobby Global</span>
+      </div>
+
+      <div class="header-actions">
+        <button id="cam-flash-btn" class="icon-btn" title="Flash Simulé">
+          <svg class="svg-icon" viewBox="0 0 24 24" fill="currentColor">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+          </svg>
+        </button>
+        <button id="cam-flip-btn" class="icon-btn" title="Changer de Caméra">
+          <svg class="svg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M23 4v6h-6"></path>
+            <path d="M1 20v-6h6"></path>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Rail des 2 Écrans Navigables par Swipe (Gauche: Chat, Droite: Caméra) -->
+    <main id="screens-track">
+
+      <!-- ==================================================================
+           Écran 0 (Gauche) : CHAT & AMIS
+           ================================================================== -->
+      <section id="chat-screen" class="screen">
+        <div class="screen-header-title">
+          <h1>Chat & Amis</h1>
+          <div style="display:flex;gap:8px;">
+            <button id="btn-add-friend-modal" class="btn-sm btn-icon-text" title="Ajouter un ami par pseudo">
+              <svg class="svg-icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                <circle cx="8.5" cy="7" r="4"></circle>
+                <line x1="20" y1="8" x2="20" y2="14"></line>
+                <line x1="23" y1="11" x2="17" y2="11"></line>
+              </svg>
+              <span>+ Ami</span>
+            </button>
+            <button id="btn-create-room" class="btn-sm btn-icon-text">
+              <svg class="svg-icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+              </svg>
+              <span>Salon</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="chat-scroll-area">
+          <!-- Carte du Salon Actuel -->
+          <div class="room-switch-card">
+            <div class="room-info">
+              <span class="room-label">Salon Connecté</span>
+              <span id="chat-room-name" class="room-name">snap-p2p-global-lobby</span>
+            </div>
+            <button id="btn-change-room" class="btn-sm">Changer</button>
+          </div>
+
+          <!-- Section : Demandes d'amis en attente -->
+          <div id="friend-requests-section" class="hidden">
+            <div class="section-title">Demandes d'amis reçues</div>
+            <div id="friend-requests-list" class="friend-requests-list">
+              <!-- Rempli dynamiquement -->
+            </div>
+          </div>
+
+          <!-- Section : Discussions Récentes & Amis -->
+          <div class="section-title">Amis & Discussions</div>
+          <div id="friends-list-container">
+            <div class="user-status-msg" style="padding: 12px 6px;">Aucun ami pour le moment. Ajoutez des pairs du lobby !</div>
+          </div>
+
+          <!-- Section : Découvrir (Lobby Public / Pairs Connectés) -->
+          <div class="section-title">Découvrir (Pairs en Ligne dans la Room)</div>
+          <div id="online-peers-container">
+            <div class="user-status-msg" style="padding: 12px 6px;">Recherche de pairs sur le réseau P2P...</div>
+          </div>
+        </div>
+
+        <!-- Vue Dédiée Message Privé (DM) -->
+        <div id="dm-view">
+          <div class="dm-header">
+            <div class="dm-user-profile">
+              <button id="dm-back-btn" class="icon-btn" style="width:34px;height:34px;">
+                <svg class="svg-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="19" y1="12" x2="5" y2="12"></line>
+                  <polyline points="12 19 5 12 12 5"></polyline>
+                </svg>
+              </button>
+              <div class="user-avatar-wrap" style="width:36px;height:36px;">
+                <img id="dm-peer-avatar" src="" alt="Avatar">
+                <span id="dm-peer-status-dot" class="status-indicator"></span>
+              </div>
+              <div>
+                <div id="dm-peer-name" style="font-weight:700;font-size:15px;">Ami</div>
+                <div id="dm-peer-status-text" style="font-size:11px;color:var(--snap-gray-text);">En ligne</div>
+              </div>
+            </div>
+            <button id="dm-quick-snap-btn" class="btn-sm btn-icon-text">
+              <svg class="svg-icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                <circle cx="12" cy="13" r="4"></circle>
+              </svg>
+              <span>Snap</span>
+            </button>
+          </div>
+
+          <div id="dm-messages-container" class="dm-messages-container">
+            <!-- Messages et Snaps échangés -->
+          </div>
+
+          <div id="dm-typing-bar" class="typing-indicator hidden">
+            <span id="dm-typing-name">Un pair</span>&nbsp;est en train d'écrire
+            <div class="typing-dots">
+              <span class="typing-dot"></span>
+              <span class="typing-dot"></span>
+              <span class="typing-dot"></span>
+            </div>
+          </div>
+
+          <form id="dm-form" class="dm-input-bar">
+            <input type="text" id="dm-input" class="dm-input" placeholder="Envoyer un chat..." autocomplete="off">
+            <button type="submit" id="dm-send-btn" class="icon-btn" style="background:var(--snap-blue);color:#fff;">
+              <svg class="svg-icon-sm" viewBox="0 0 24 24" fill="currentColor">
+                <line x1="22" y1="2" x2="11" y2="13"></line>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+              </svg>
+            </button>
+          </form>
+        </div>
+      </section>
+
+      <!-- ==================================================================
+           Écran 1 (Droite - Par Défaut) : CAMÉRA
+           ================================================================== -->
+      <section id="camera-screen" class="screen">
+        <div class="camera-viewport">
+          <video id="camera-video" autoplay playsinline muted></video>
+          <div id="flash-overlay"></div>
+
+          <!-- Contrôles Bas Caméra -->
+          <div class="camera-bottom-controls">
+            <!-- Bouton Import de fichier média -->
+            <label class="camera-side-action" title="Importer une image ou vidéo">
+              <svg class="svg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+              </svg>
+              <input type="file" id="camera-file-import" accept="image/*,video/*" style="display:none;">
+            </label>
+
+            <!-- Déclencheur Central (Court = Photo, Long = Vidéo) -->
+            <div class="shutter-wrapper">
+              <svg class="shutter-svg" viewBox="0 0 90 90">
+                <circle id="shutter-progress" class="shutter-progress-ring" cx="45" cy="45" r="42"></circle>
+              </svg>
+              <button id="shutter-button" class="shutter-btn" title="Clic court : Photo / Maintien : Vidéo">
+                <div class="shutter-inner"></div>
+              </button>
+            </div>
+
+            <!-- Raccourci vers Chat -->
+            <button id="camera-quick-chat" class="camera-side-action" title="Ouvrir le Chat">
+              <svg class="svg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- Barre de Navigation Fixe en Bas (2 Onglets : Chat & Caméra) -->
+    <nav id="bottom-nav">
+      <div id="nav-tab-chat" class="nav-tab" data-index="0">
+        <svg class="svg-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+        </svg>
+        <span id="unread-chat-badge" class="nav-badge hidden">0</span>
+      </div>
+      <div id="nav-tab-camera" class="nav-tab active" data-index="1">
+        <svg class="svg-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+          <circle cx="12" cy="13" r="4"></circle>
+        </svg>
+      </div>
+    </nav>
+
+  </div>
+
+  <!-- ======================================================================
+       Éditeur de Snap Plein Écran (Post-Capture)
+       ====================================================================== -->
+  <div id="snap-editor-overlay" class="hidden">
+    <div class="editor-media-layer">
+      <img id="editor-preview-img" src="" alt="Capture Photo" style="display:none;">
+      <video id="editor-preview-video" src="" autoplay loop playsinline muted style="display:none;"></video>
+      <canvas id="editor-drawing-canvas"></canvas>
+
+      <!-- Bandeau de Texte Déplaçable Verticalement -->
+      <div id="editor-text-banner" class="hidden">
+        <input type="text" id="editor-banner-input" placeholder="Ajouter une légende..." maxlength="120" autocomplete="off">
+      </div>
+    </div>
+
+    <!-- Barre d'Outils Haut -->
+    <div class="editor-top-bar">
+      <button id="editor-discard-btn" class="icon-btn" title="Annuler">
+        <svg class="svg-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+      <div style="display:flex;gap:10px;">
+        <button id="editor-download-btn" class="icon-btn" title="Enregistrer localement">
+          <svg class="svg-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Outils Latéraux Droite -->
+    <div class="editor-tools-sidebar">
+      <button id="editor-text-btn" class="icon-btn" title="Ajouter Texte">
+        <span style="font-weight:900;font-size:18px;">T</span>
+      </button>
+      <button id="editor-pen-btn" class="icon-btn" title="Dessiner (Doodle)">
+        <svg class="svg-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 19l7-7 3 3-7 7-3-3z"></path>
+          <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path>
+          <path d="M2 2l7.586 7.586"></path>
+          <circle cx="11" cy="11" r="2"></circle>
+        </svg>
+      </button>
+      <button id="editor-timer-btn" class="icon-btn" title="Minuteur Snap">
+        <svg class="svg-icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <polyline points="12 6 12 12 16 14"></polyline>
+        </svg>
+        <span class="timer-val" style="font-size:10px;font-weight:800;margin-top:-2px;">5s</span>
+      </button>
+      <button id="editor-undo-btn" class="icon-btn" title="Annuler trait">
+        <svg class="svg-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="1 4 1 10 7 10"></polyline>
+          <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Palette de Couleurs Doodle -->
+    <div id="editor-color-palette" class="hidden">
+      <div class="color-dot active" style="background:#FFFC00;" data-color="#FFFC00"></div>
+      <div class="color-dot" style="background:#E92754;" data-color="#E92754"></div>
+      <div class="color-dot" style="background:#9B5DE5;" data-color="#9B5DE5"></div>
+      <div class="color-dot" style="background:#0099FF;" data-color="#0099FF"></div>
+      <div class="color-dot" style="background:#00F5D4;" data-color="#00F5D4"></div>
+      <div class="color-dot" style="background:#FFFFFF;" data-color="#FFFFFF"></div>
+      <div class="color-dot" style="background:#000000;" data-color="#000000"></div>
+    </div>
+
+    <!-- Barre Inférieure Éditeur -->
+    <div class="editor-bottom-bar">
+      <div></div>
+      <button id="editor-send-btn" class="btn-send-snap">
+        <span>Envoyer à</span>
+        <svg class="svg-icon-sm" viewBox="0 0 24 24" fill="currentColor">
+          <polygon points="5 3 19 12 5 21 5 3"></polygon>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- ======================================================================
+       Visionneuse de Snap Plein Écran (Compte à Rebours & Purge Mémoire)
+       ====================================================================== -->
+  <div id="snap-viewer-overlay" class="hidden">
+    <div class="viewer-header">
+      <div class="viewer-author-info">
+        <img id="viewer-author-avatar" class="viewer-author-avatar" src="" alt="Avatar">
+        <span id="viewer-author-name" class="viewer-author-name">Alex</span>
+      </div>
+
+      <!-- Compte à Rebours Circulaire -->
+      <div class="viewer-timer-widget">
+        <svg class="viewer-timer-svg" viewBox="0 0 44 44">
+          <circle id="viewer-timer-ring" class="viewer-timer-ring" cx="22" cy="22" r="18"></circle>
+        </svg>
+        <span id="viewer-timer-number" class="viewer-timer-number">5</span>
+      </div>
+    </div>
+
+    <img id="viewer-img" src="" alt="Snap" style="display:none;">
+    <video id="viewer-video" src="" autoplay playsinline style="display:none;"></video>
+
+    <div id="viewer-banner" class="hidden" style="position:absolute;left:0;right:0;transform:translateY(-50%);background:rgba(0,0,0,0.65);padding:10px 16px;text-align:center;font-size:18px;font-weight:800;color:#fff;">
+      <span id="viewer-banner-text"></span>
+    </div>
+  </div>
+
+  <!-- ======================================================================
+       Modale : Choix des Destinataires ("Envoyer à")
+       ====================================================================== -->
+  <div id="send-sheet-modal" class="modal-backdrop">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Envoyer le Snap à</h2>
+        <button id="btn-close-send-sheet" class="btn-close-modal" title="Fermer">
+          <svg class="svg-icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <div class="section-title">Amis & Pairs Connectés</div>
+      <div id="send-recipients-list" style="max-height:240px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;">
+        <!-- Rempli dynamiquement -->
+      </div>
+
+      <button id="btn-confirm-send-snap" class="btn-primary" style="margin-top:18px;">
+        <span>Envoyer maintenant</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ======================================================================
+       Modale : Ajouter un Ami par Pseudo
+       ====================================================================== -->
+  <div id="add-friend-modal" class="modal-backdrop">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Ajouter un Ami</h2>
+        <button id="btn-close-add-friend-modal" class="btn-close-modal" title="Fermer">
+          <svg class="svg-icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <p style="font-size:13px;color:var(--snap-gray-text);margin-bottom:14px;">
+        Entrez le pseudo exact de l'utilisateur avec qui vous souhaitez chatter :
+      </p>
+
+      <form id="add-friend-form">
+        <div class="form-group">
+          <label for="input-friend-pseudo">Pseudo de votre ami</label>
+          <input type="text" id="input-friend-pseudo" class="form-input" placeholder="Ex: BobSnap" required maxlength="25" autocomplete="off">
+        </div>
+
+        <button type="submit" class="btn-primary" style="margin-top:12px;">
+          <span>Envoyer la demande d'ami</span>
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ======================================================================
+       Modale : Profil & Gestion de Clé Portable
+       ====================================================================== -->
+  <div id="profile-modal" class="modal-backdrop">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Mon Profil & Clé Locale</h2>
+        <button id="btn-close-profile-modal" class="btn-close-modal" title="Fermer">
+          <svg class="svg-icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <div style="display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:18px;">
+        <div style="position:relative;width:80px;height:80px;border-radius:50%;overflow:hidden;border:3px solid var(--snap-yellow);">
+          <img id="profile-modal-avatar" src="" alt="Avatar" style="width:100%;height:100%;object-fit:cover;">
+          <label style="position:absolute;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:0;transition:opacity 0.2s;" title="Changer l'avatar">
+            <svg class="svg-icon-sm" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+              <circle cx="12" cy="13" r="4"></circle>
+            </svg>
+            <input type="file" id="profile-file-avatar" accept="image/*" style="display:none;">
+          </label>
+        </div>
+        <div id="profile-modal-nickname" style="font-size:18px;font-weight:800;">Pseudo</div>
+        <div id="profile-modal-uuid" style="font-size:11px;color:var(--snap-gray-text);word-break:break-all;font-family:monospace;">UUID: ...</div>
+      </div>
+
+      <!-- Export / Import de Clé -->
+      <div class="section-title">Système de Clé Locale Portable</div>
+      <button id="btn-export-key" class="btn-primary btn-icon-text">
+        <svg class="svg-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 2l-2 2m-1.5 1.5L16 7l-2-2-4 4 2 2-3 3H7v-2l-4 4 2 2 2-2v-2l3-3 2 2 4-4-2-2 1.5-1.5L21 2z"></path>
+        </svg>
+        <span>Exporter ma clé (.json & texte copiable)</span>
+      </button>
+      <button id="btn-import-key-modal" class="btn-secondary btn-icon-text">
+        <svg class="svg-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="7 10 12 15 17 10"></polyline>
+          <line x1="12" y1="15" x2="12" y2="3"></line>
+        </svg>
+        <span>Importer une clé existante</span>
+      </button>
+
+      <!-- Salons P2P -->
+      <div class="section-title">Salon P2P Actuel</div>
+      <div style="display:flex;gap:8px;margin-bottom:10px;">
+        <input type="text" id="input-room-code" class="form-input" style="flex:1;" placeholder="Nom ou code du salon...">
+        <button id="btn-join-room-code" class="btn-sm" style="height:auto;padding:0 16px;">Rejoindre</button>
+      </div>
+
+      <!-- Purge / Déconnexion -->
+      <button id="btn-purge-account" class="btn-danger btn-icon-text">
+        <svg class="svg-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="3 6 5 6 21 6"></polyline>
+          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+        </svg>
+        <span>Supprimer les données / Réinitialiser</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ======================================================================
+       Modale : Onboarding / Création de Compte au 1er Lancement
+       ====================================================================== -->
+  <div id="onboarding-modal" class="modal-backdrop">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <svg class="svg-ghost-logo" viewBox="0 0 24 24" fill="var(--snap-yellow)">
+            <path d="M12 2C7.58 2 4 5.58 4 10c0 3.33 2.05 6.18 5 7.37V21l3-1.5 3 1.5v-3.63c2.95-1.19 5-4.04 5-7.37 0-4.42-3.58-8-8-8zm-2 9a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm4 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/>
+          </svg>
+          <h2>Bienvenue sur Snap P2P</h2>
+        </div>
+      </div>
+
+      <p style="font-size:13px;color:var(--snap-gray-text);margin-bottom:16px;">
+        Application éphémère 100% P2P sans serveur. Choisissez votre pseudo et votre clé locale.
+      </p>
+
+      <form id="onboarding-form">
+        <div class="form-group">
+          <label for="onboarding-pseudo">Votre Pseudo</label>
+          <input type="text" id="onboarding-pseudo" class="form-input" placeholder="Ex: AlexSnap" required maxlength="25">
+        </div>
+
+        <div class="form-group">
+          <label>Photo de Profil (Optionnelle)</label>
+          <div style="display:flex;align-items:center;gap:12px;">
+            <img id="onboarding-avatar-preview" src="" style="width:48px;height:48px;border-radius:50%;object-fit:cover;border:2px solid var(--snap-yellow);">
+            <label class="btn-secondary" style="margin:0;width:auto;padding:8px 14px;cursor:pointer;">
+              Choisir photo
+              <input type="file" id="onboarding-file-avatar" accept="image/*" style="display:none;">
+            </label>
+          </div>
+        </div>
+
+        <label class="checkbox-row">
+          <input type="checkbox" id="onboarding-temp-session">
+          <span style="font-size:13px;">
+            <strong>Session temporaire</strong> (stockage RAM uniquement, détruit à la fermeture de l'onglet)
+          </span>
+        </label>
+
+        <button type="submit" class="btn-primary" style="margin-top:14px;">
+          Créer mon profil local
+        </button>
+      </form>
+
+      <div style="text-align:center;margin-top:16px;">
+        <button id="btn-onboarding-import" class="btn-secondary">
+          Vous avez déjà une clé ? Importer une clé
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================================================================
+       Modale : Import de Clé Portable
+       ====================================================================== -->
+  <div id="import-key-modal" class="modal-backdrop">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Importer une Clé Locale</h2>
+        <button id="btn-close-import-modal" class="btn-close-modal" title="Fermer">
+          <svg class="svg-icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <div class="form-group">
+        <label>Coller le code texte (JSON ou SNAPKEY:...)</label>
+        <textarea id="import-key-text" class="form-input" rows="4" placeholder="Collez votre code de clé ici..."></textarea>
+      </div>
+
+      <div class="form-group">
+        <label>OU Charger un fichier .json</label>
+        <input type="file" id="import-key-file" accept=".json,application/json" class="form-input">
+      </div>
+
+      <label class="checkbox-row">
+        <input type="checkbox" id="import-temp-session">
+        <span style="font-size:13px;">Importer en tant que <strong>session temporaire</strong> (RAM)</span>
+      </label>
+
+      <button id="btn-confirm-import-key" class="btn-primary">
+        Restaurer mon compte
+      </button>
+    </div>
+  </div>
+
+  <!-- Conteneur de Notifications Toast -->
+  <div id="toast-container"></div>
+
+  <!-- Scripts JavaScript (Modules ES) -->
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

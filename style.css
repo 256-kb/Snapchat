@@ -1,0 +1,1320 @@
+/* ==========================================================================
+   Snapchat P2P - Style CSS Mobile-First (Zéro Emoji - 100% SVG & 2 Écrans)
+   Palette: Jaune Snapchat (#FFFC00), Noir Pur (#000000), Gris Foncé (#18181b)
+   ========================================================================== */
+
+:root {
+  --snap-yellow: #FFFC00;
+  --snap-yellow-hover: #e6e300;
+  --snap-black: #000000;
+  --snap-dark: #121214;
+  --snap-dark-card: #1c1c1f;
+  --snap-dark-border: #2c2c30;
+  --snap-gray-text: #8e8e93;
+  --snap-white: #ffffff;
+  
+  --snap-red: #E92754;      /* Photos & snaps non ouverts */
+  --snap-purple: #9B5DE5;   /* Vidéos snaps */
+  --snap-blue: #0099FF;     /* Messages chat & bouton envoi */
+  --snap-green: #00F5D4;    /* En ligne & acceptation */
+  --snap-opened: #64748B;   /* Snap ouvert / grisé */
+
+  --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  height: 100dvh;
+  overflow: hidden;
+  background-color: var(--snap-black);
+  color: var(--snap-white);
+  font-family: var(--font-family);
+  font-size: 15px;
+  line-height: 1.4;
+  touch-action: manipulation;
+}
+
+input, textarea, button {
+  font-family: inherit;
+  user-select: auto;
+}
+
+/* --------------------------------------------------------------------------
+   Icônes Vectorielles SVG
+   -------------------------------------------------------------------------- */
+.svg-icon {
+  width: 22px;
+  height: 22px;
+  display: inline-block;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+.svg-icon-sm {
+  width: 18px;
+  height: 18px;
+  display: inline-block;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+.svg-icon-xs {
+  width: 14px;
+  height: 14px;
+  display: inline-block;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+.svg-nav-icon {
+  width: 26px;
+  height: 26px;
+  display: inline-block;
+  transition: transform 0.15s;
+}
+
+.svg-ghost-logo {
+  width: 32px;
+  height: 32px;
+}
+
+.btn-icon-text {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+/* --------------------------------------------------------------------------
+   App Container & Horizontal Viewport (Swipe 2 Écrans : Chat & Caméra)
+   -------------------------------------------------------------------------- */
+#app-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  height: 100dvh;
+  overflow: hidden;
+  background-color: var(--snap-black);
+}
+
+#screens-track {
+  display: flex;
+  width: 200%;
+  height: 100%;
+  transform: translateX(-50%); /* Par défaut sur l'écran Caméra (Écran 1) */
+  transition: transform 0.32s cubic-bezier(0.2, 0.9, 0.3, 1);
+  will-change: transform;
+}
+
+.screen {
+  position: relative;
+  width: 50%;
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* --------------------------------------------------------------------------
+   Top Bar Flottante Universelle
+   -------------------------------------------------------------------------- */
+.top-header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: calc(56px + var(--safe-top));
+  padding-top: var(--safe-top);
+  padding-left: calc(16px + var(--safe-left));
+  padding-right: calc(16px + var(--safe-right));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  z-index: 50;
+  pointer-events: none;
+}
+
+.top-header > * {
+  pointer-events: auto;
+}
+
+.header-avatar-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 2px solid var(--snap-yellow);
+  overflow: hidden;
+  background: var(--snap-dark-card);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+}
+
+.header-avatar-btn img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.header-room-pill {
+  background: rgba(28, 28, 31, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  color: #fff;
+  transition: background 0.2s;
+}
+
+.header-room-pill:hover {
+  background: rgba(44, 44, 48, 0.95);
+}
+
+.online-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--snap-green);
+  box-shadow: 0 0 6px var(--snap-green);
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.icon-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(28, 28, 31, 0.8);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--snap-white);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.15s, background 0.2s;
+}
+
+.icon-btn:active {
+  transform: scale(0.92);
+}
+
+.icon-btn.active {
+  background: var(--snap-yellow);
+  color: var(--snap-black);
+  border-color: var(--snap-yellow);
+}
+
+/* --------------------------------------------------------------------------
+   Écran Droite (Écran 1) : CAMÉRA (Écran par défaut)
+   -------------------------------------------------------------------------- */
+#camera-screen {
+  background-color: #000;
+}
+
+.camera-viewport {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+#camera-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #000;
+}
+
+/* Flash Simulé */
+#flash-overlay {
+  position: absolute;
+  inset: 0;
+  background-color: #ffffff;
+  opacity: 0;
+  display: none;
+  z-index: 90;
+  pointer-events: none;
+  transition: opacity 0.15s ease-out;
+}
+
+/* Déclencheur & Contrôles Caméra */
+.camera-bottom-controls {
+  position: absolute;
+  bottom: calc(72px + var(--safe-bottom));
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding: 0 24px;
+  z-index: 40;
+}
+
+.shutter-wrapper {
+  position: relative;
+  width: 86px;
+  height: 86px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.shutter-svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+  pointer-events: none;
+}
+
+.shutter-progress-ring {
+  fill: transparent;
+  stroke: var(--snap-red);
+  stroke-width: 5;
+  stroke-dasharray: 264;
+  stroke-dashoffset: 264;
+  transition: stroke-dashoffset 0.05s linear;
+}
+
+.shutter-btn {
+  width: 74px;
+  height: 74px;
+  border-radius: 50%;
+  border: 4px solid var(--snap-white);
+  background: rgba(255, 255, 255, 0.25);
+  box-shadow: 0 0 16px rgba(0,0,0,0.5);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.15s ease, background-color 0.2s;
+  outline: none;
+}
+
+.shutter-inner {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  background: var(--snap-white);
+  transition: transform 0.15s ease, background-color 0.2s;
+}
+
+.shutter-btn:active .shutter-inner,
+.shutter-btn.recording .shutter-inner {
+  transform: scale(0.85);
+  background: var(--snap-red);
+}
+
+.camera-side-action {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(20, 20, 24, 0.65);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+
+.camera-side-action:active {
+  transform: scale(0.9);
+}
+
+/* --------------------------------------------------------------------------
+   Écran Gauche (Écran 0) : CHAT & AMIS
+   -------------------------------------------------------------------------- */
+#chat-screen {
+  background-color: var(--snap-dark);
+  padding-top: calc(56px + var(--safe-top));
+  padding-bottom: calc(64px + var(--safe-bottom));
+}
+
+.screen-header-title {
+  padding: 12px 20px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.screen-header-title h1 {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.4px;
+}
+
+.chat-scroll-area {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 16px 20px;
+}
+
+/* Carte du Salon */
+.room-switch-card {
+  background: var(--snap-dark-card);
+  border: 1px solid var(--snap-dark-border);
+  border-radius: 16px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.room-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.room-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  color: var(--snap-gray-text);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.room-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--snap-yellow);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+
+.btn-sm {
+  padding: 8px 14px;
+  border-radius: 20px;
+  background: var(--snap-yellow);
+  color: #000;
+  font-weight: 700;
+  font-size: 12px;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform 0.15s, opacity 0.2s;
+}
+
+.btn-sm:active {
+  transform: scale(0.95);
+}
+
+/* Demandes d'amis reçues */
+.friend-requests-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.friend-request-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  background: rgba(255, 252, 0, 0.08);
+  border: 1px solid rgba(255, 252, 0, 0.3);
+  border-radius: 16px;
+  gap: 10px;
+}
+
+.friend-req-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-req-accept {
+  padding: 6px 12px;
+  border-radius: 14px;
+  background: var(--snap-green);
+  color: #000;
+  font-size: 12px;
+  font-weight: 800;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.btn-req-refuse {
+  padding: 6px 12px;
+  border-radius: 14px;
+  background: #27272e;
+  border: 1px solid #3f3f46;
+  color: var(--snap-gray-text);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* Titres de section */
+.section-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--snap-gray-text);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin: 18px 4px 10px;
+}
+
+/* Contacts & discussions */
+.user-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  background: var(--snap-dark-card);
+  border-radius: 16px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.user-item:hover, .user-item:active {
+  background: #242429;
+}
+
+.user-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  overflow: hidden;
+}
+
+.user-avatar-wrap {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+}
+
+.user-avatar-wrap img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--snap-dark-border);
+}
+
+.user-avatar-wrap .status-indicator {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--snap-green);
+  border: 2px solid var(--snap-dark-card);
+}
+
+.user-text-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  overflow: hidden;
+}
+
+.user-nickname {
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+
+.user-status-msg {
+  font-size: 12px;
+  color: var(--snap-gray-text);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* Indicateurs d'état des snaps / chats */
+.snap-icon {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.snap-icon.photo-unopened {
+  background: var(--snap-red);
+}
+
+.snap-icon.video-unopened {
+  background: var(--snap-purple);
+}
+
+.snap-icon.opened {
+  background: transparent;
+  border: 2px solid var(--snap-opened);
+}
+
+.snap-icon.chat-unread {
+  background: var(--snap-blue);
+  border-radius: 2px;
+}
+
+.user-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-friend {
+  padding: 6px 12px;
+  border-radius: 16px;
+  background: rgba(255, 252, 0, 0.15);
+  border: 1px solid var(--snap-yellow);
+  color: var(--snap-yellow);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.btn-friend.is-friend {
+  background: #2a2a30;
+  border-color: #3f3f46;
+  color: var(--snap-gray-text);
+}
+
+/* Vue DM Dédiée (Conversation privée) */
+#dm-view {
+  position: absolute;
+  inset: 0;
+  background: var(--snap-dark);
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  transform: translateX(100%);
+  transition: transform 0.28s cubic-bezier(0.2, 0.9, 0.3, 1);
+  padding-bottom: var(--safe-bottom);
+}
+
+#dm-view.active {
+  transform: translateX(0);
+}
+
+.dm-header {
+  padding-top: calc(10px + var(--safe-top));
+  padding-bottom: 12px;
+  padding-left: 16px;
+  padding-right: 16px;
+  background: var(--snap-dark-card);
+  border-bottom: 1px solid var(--snap-dark-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.dm-user-profile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.dm-messages-container {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dm-snap-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 16px;
+  background: var(--snap-dark-card);
+  border: 1px solid var(--snap-dark-border);
+  cursor: pointer;
+  max-width: 80%;
+  align-self: flex-start;
+  transition: transform 0.15s, background 0.15s;
+}
+
+.dm-snap-card:active {
+  transform: scale(0.98);
+}
+
+.dm-snap-card.outgoing {
+  align-self: flex-end;
+  background: #1e1e24;
+}
+
+.dm-snap-icon-big {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+
+.dm-snap-icon-big.photo {
+  background: var(--snap-red);
+}
+
+.dm-snap-icon-big.video {
+  background: var(--snap-purple);
+}
+
+.dm-snap-icon-big.opened {
+  background: transparent;
+  border: 2px solid var(--snap-opened);
+  color: var(--snap-opened);
+}
+
+/* Bulles de chat */
+.chat-bubble {
+  max-width: 78%;
+  padding: 10px 14px;
+  border-radius: 18px;
+  font-size: 14px;
+  line-height: 1.35;
+  word-break: break-word;
+  position: relative;
+  cursor: pointer;
+  user-select: text;
+}
+
+.chat-bubble.incoming {
+  align-self: flex-start;
+  background: var(--snap-dark-card);
+  border-left: 4px solid var(--snap-blue);
+  color: #fff;
+}
+
+.chat-bubble.outgoing {
+  align-self: flex-end;
+  background: #25252b;
+  border-left: 4px solid var(--snap-yellow);
+  color: #fff;
+}
+
+.chat-bubble.saved {
+  background: #2c2c36;
+  box-shadow: 0 0 0 1px rgba(255, 252, 0, 0.4);
+}
+
+.chat-bubble.saved::after {
+  content: "Enregistré";
+  display: block;
+  font-size: 10px;
+  color: var(--snap-yellow);
+  margin-top: 4px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Typing indicator */
+.typing-indicator {
+  font-size: 12px;
+  font-style: italic;
+  color: var(--snap-gray-text);
+  padding: 4px 16px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.typing-dots {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.typing-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--snap-yellow);
+  animation: typingBounce 1.2s infinite ease-in-out;
+}
+
+.typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes typingBounce {
+  0%, 80%, 100% { transform: translateY(0); }
+  40% { transform: translateY(-4px); }
+}
+
+.dm-input-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  background: var(--snap-dark-card);
+  border-top: 1px solid var(--snap-dark-border);
+}
+
+.dm-input {
+  flex: 1;
+  background: #25252a;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  padding: 10px 16px;
+  color: #fff;
+  font-size: 14px;
+  outline: none;
+}
+
+.dm-input:focus {
+  border-color: var(--snap-yellow);
+}
+
+/* --------------------------------------------------------------------------
+   Barre de Navigation Fixe (Bas - 2 Onglets : Chat & Caméra)
+   -------------------------------------------------------------------------- */
+#bottom-nav {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: calc(56px + var(--safe-bottom));
+  padding-bottom: var(--safe-bottom);
+  background: rgba(10, 10, 12, 0.84);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  z-index: 50;
+}
+
+.nav-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  height: 100%;
+  cursor: pointer;
+  color: var(--snap-gray-text);
+  transition: color 0.15s, transform 0.15s;
+  position: relative;
+}
+
+.nav-tab:active {
+  transform: scale(0.92);
+}
+
+.nav-tab.active {
+  color: var(--snap-yellow);
+}
+
+.nav-tab.active .svg-nav-icon {
+  stroke: var(--snap-yellow);
+}
+
+.nav-badge {
+  position: absolute;
+  top: 6px;
+  right: calc(50% - 18px);
+  background: var(--snap-red);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 1px 6px;
+  border-radius: 10px;
+  border: 1px solid #000;
+}
+
+/* --------------------------------------------------------------------------
+   Éditeur de Snap (Plein Écran Post-Capture)
+   -------------------------------------------------------------------------- */
+#snap-editor-overlay {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  z-index: 100;
+  display: none;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.editor-media-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+#editor-preview-img,
+#editor-preview-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+#editor-drawing-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 20;
+  touch-action: none;
+}
+
+/* Bandeau de texte déplaçable */
+#editor-text-banner {
+  position: absolute;
+  left: 0;
+  right: 0;
+  transform: translateY(-50%);
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+  padding: 12px 16px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  touch-action: none;
+}
+
+#editor-text-banner:active {
+  cursor: grabbing;
+}
+
+#editor-banner-input {
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: #fff;
+  font-size: 20px;
+  font-weight: 800;
+  text-align: center;
+  outline: none;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+}
+
+/* Barre d'outils éditeur (Haut / Droite) */
+.editor-top-bar {
+  position: absolute;
+  top: var(--safe-top);
+  left: 0;
+  right: 0;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  z-index: 40;
+}
+
+.editor-tools-sidebar {
+  position: absolute;
+  top: calc(70px + var(--safe-top));
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  z-index: 40;
+}
+
+/* Palette de couleurs doodle */
+#editor-color-palette {
+  position: absolute;
+  top: calc(70px + var(--safe-top));
+  right: 66px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: rgba(20, 20, 24, 0.85);
+  backdrop-filter: blur(12px);
+  padding: 10px 8px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  z-index: 40;
+}
+
+.color-dot {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: transform 0.15s;
+}
+
+.color-dot:active {
+  transform: scale(1.2);
+}
+
+.color-dot.active {
+  border-color: #fff;
+  transform: scale(1.15);
+}
+
+/* Barre d'action inférieure de l'éditeur */
+.editor-bottom-bar {
+  position: absolute;
+  bottom: calc(16px + var(--safe-bottom));
+  left: 16px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  z-index: 40;
+}
+
+.btn-send-snap {
+  padding: 12px 24px;
+  border-radius: 30px;
+  background: var(--snap-yellow);
+  color: #000;
+  font-weight: 800;
+  font-size: 16px;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 4px 16px rgba(255, 252, 0, 0.35);
+  transition: transform 0.15s;
+}
+
+.btn-send-snap:active {
+  transform: scale(0.95);
+}
+
+/* --------------------------------------------------------------------------
+   Visionneuse Plein Écran (Éphémère & Compte à Rebours)
+   -------------------------------------------------------------------------- */
+#snap-viewer-overlay {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  z-index: 200;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+#viewer-img,
+#viewer-video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.viewer-header {
+  position: absolute;
+  top: calc(16px + var(--safe-top));
+  left: 16px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  z-index: 30;
+  pointer-events: none;
+}
+
+.viewer-author-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(10px);
+  padding: 6px 14px;
+  border-radius: 20px;
+}
+
+.viewer-author-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.viewer-author-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.viewer-timer-widget {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 50%;
+  backdrop-filter: blur(8px);
+}
+
+.viewer-timer-svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.viewer-timer-ring {
+  fill: transparent;
+  stroke: var(--snap-yellow);
+  stroke-width: 3.5;
+  stroke-linecap: round;
+}
+
+.viewer-timer-number {
+  font-size: 14px;
+  font-weight: 800;
+  color: #fff;
+  z-index: 2;
+}
+
+/* --------------------------------------------------------------------------
+   Modales (Profil, Clé, Ajouter Ami)
+   -------------------------------------------------------------------------- */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 150;
+  display: none;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0;
+}
+
+.modal-content {
+  background: var(--snap-dark-card);
+  border-top: 1px solid var(--snap-dark-border);
+  width: 100%;
+  max-width: 500px;
+  border-radius: 24px 24px 0 0;
+  padding: 24px 20px calc(24px + var(--safe-bottom));
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow: 0 -8px 30px rgba(0,0,0,0.6);
+  animation: slideUpModal 0.25s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+
+@keyframes slideUpModal {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.modal-header h2 {
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.btn-close-modal {
+  background: #27272e;
+  border: none;
+  color: #fff;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 16px;
+}
+
+.form-group {
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-group label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--snap-gray-text);
+  text-transform: uppercase;
+}
+
+.form-input {
+  background: #25252b;
+  border: 1px solid var(--snap-dark-border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  color: #fff;
+  font-size: 15px;
+  outline: none;
+}
+
+.form-input:focus {
+  border-color: var(--snap-yellow);
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0;
+  cursor: pointer;
+}
+
+.checkbox-row input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--snap-yellow);
+}
+
+.btn-primary {
+  width: 100%;
+  padding: 14px;
+  border-radius: 25px;
+  background: var(--snap-yellow);
+  color: #000;
+  font-size: 16px;
+  font-weight: 800;
+  border: none;
+  cursor: pointer;
+  margin-top: 10px;
+  transition: transform 0.15s;
+}
+
+.btn-primary:active {
+  transform: scale(0.97);
+}
+
+.btn-secondary {
+  width: 100%;
+  padding: 12px;
+  border-radius: 25px;
+  background: #27272e;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  border: 1px solid var(--snap-dark-border);
+  cursor: pointer;
+  margin-top: 8px;
+}
+
+.btn-danger {
+  width: 100%;
+  padding: 12px;
+  border-radius: 25px;
+  background: rgba(233, 39, 84, 0.15);
+  border: 1px solid var(--snap-red);
+  color: var(--snap-red);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  margin-top: 16px;
+}
+
+/* Toast Notifications */
+#toast-container {
+  position: fixed;
+  top: calc(16px + var(--safe-top));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 300;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.toast {
+  background: rgba(28, 28, 32, 0.94);
+  backdrop-filter: blur(14px);
+  border: 1px solid var(--snap-yellow);
+  color: #fff;
+  padding: 10px 18px;
+  border-radius: 24px;
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  animation: toastFadeIn 0.25s ease-out;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+@keyframes toastFadeIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* Responsive Tablet / Desktop */
+@media (min-width: 600px) {
+  #app-container {
+    max-width: 440px;
+    margin: 0 auto;
+    border-left: 1px solid #222;
+    border-right: 1px solid #222;
+    box-shadow: 0 0 50px rgba(0,0,0,0.8);
+  }
+}
