@@ -53,8 +53,11 @@ class SnapApp {
     this.profile = profile;
     this.updateProfileUI();
 
+    // Démarrage non-bloquant de la caméra pour ne jamais retarder le réseau P2P
     const videoEl = document.getElementById('camera-video');
-    await camera.init(videoEl);
+    camera.init(videoEl).catch((err) => {
+      console.warn('Caméra différée ou refusée:', err);
+    });
 
     await p2p.init(this.profile);
     this.setupP2PListeners();

@@ -52,17 +52,17 @@ Clone complet, fonctionnel et visuel de Snapchat, **100 % P2P sans aucun serveur
 Pour tester l'application en local :
 
 ```bash
-# Avec Python
-python -m http.server 8080
+# Avec Python sur le port 3000
+python -m http.server 3000
 
 # Ou avec npx serve
-npx serve .
+npx serve -p 3000 .
 ```
 
-Puis ouvrez votre navigateur sur `http://localhost:8080`.
+Puis ouvrez votre navigateur sur `http://localhost:3000`.
 
 > **Test multi-utilisateurs :**
-> Ouvrez deux onglets (ou une fenêtre normale et une fenêtre de navigation privée) sur `http://localhost:8080`. Créez deux profils (ex: "Alice" et "Bob").
+> Ouvrez deux onglets (ou une fenêtre normale et une fenêtre de navigation privée) sur `http://localhost:3000`. Créez deux profils (ex: "Alice" et "Bob").
 > 1. Cliquez sur **+ Ami** dans l'onglet d'Alice et tapez "Bob".
 > 2. Bob reçoit instantanément la demande d'ami dans sa section dédiée et clique sur **Accepter**.
 > 3. Alice et Bob sont désormais amis et peuvent s'envoyer des Snaps et des messages éphémères !
