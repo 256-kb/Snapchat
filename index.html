@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Snapchat P2P - Clone WebRTC Serverless</title>
-  <link rel="stylesheet" href="style.css?v=3.3">
+  <link rel="stylesheet" href="style.css?v=4.1">
 </head>
 <body>
 
@@ -19,6 +19,7 @@
             <img id="top-avatar-img" src="" alt="Avatar">
           </div>
           <span id="top-user-pseudo" class="desktop-only-pseudo">Profil</span>
+          <span id="top-user-tag" class="user-tag-badge desktop-only-pseudo">#0000</span>
         </div>
 
         <div id="top-room-pill" class="header-room-pill" title="Changer de Salon">
@@ -102,16 +103,25 @@
             </div>
           </div>
 
-          <!-- Section : Discussions Récentes & Amis -->
-          <div class="section-title">Amis & Discussions</div>
-          <div id="friends-list-container">
-            <div class="user-status-msg" style="padding: 12px 6px;">Aucun ami pour le moment. Ajoutez des pairs du lobby !</div>
+          <!-- Recherche rapide (discussions, amis & annuaire Gossip) -->
+          <div class="chat-search-wrap">
+            <svg class="svg-icon-xs chat-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input type="search" id="chat-search-input" class="chat-search-input" placeholder="Rechercher ami ou annuaire (#tag)..." autocomplete="off">
           </div>
 
-          <!-- Section : Découvrir (Lobby Public / Pairs Connectés) -->
-          <div class="section-title">Découvrir (Pairs en Ligne dans la Room)</div>
-          <div id="online-peers-container">
-            <div class="user-status-msg" style="padding: 12px 6px;">Recherche de pairs sur le réseau P2P...</div>
+          <!-- Section Unique : Discussions récentes en premier, Amis & Pairs -->
+          <div class="section-header-row">
+            <span class="section-title" style="margin:0;">Discussions & Pairs</span>
+            <button type="button" id="btn-toggle-gossip" class="btn-gossip-toggle" title="Afficher ou masquer les profils Gossip hors ligne">
+              <span>Annuaire</span>
+              <span id="directory-count-badge" class="directory-count-badge">0</span>
+            </button>
+          </div>
+          <div id="unified-chats-container">
+            <div class="user-status-msg" style="padding: 12px 6px;">Aucune discussion ni pair en ligne pour le moment.</div>
           </div>
         </div>
       </section>
@@ -178,18 +188,32 @@
             <img id="dm-peer-avatar" src="" alt="Avatar">
             <span id="dm-peer-status-dot" class="status-indicator"></span>
           </div>
-          <div>
-            <div id="dm-peer-name" style="font-weight:700;font-size:15px;">Ami</div>
+          <div style="min-width:0;">
+            <div class="dm-peer-title-row">
+              <span id="dm-peer-name" style="font-weight:700;font-size:15px;">Ami</span>
+              <span id="dm-peer-tag" class="user-tag-badge"></span>
+            </div>
             <div id="dm-peer-status-text" style="font-size:11px;color:var(--snap-gray-text);">En ligne</div>
           </div>
         </div>
-        <button id="dm-quick-snap-btn" class="btn-sm btn-icon-text">
-          <svg class="svg-icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
-            <circle cx="12" cy="13" r="4"></circle>
-          </svg>
-          <span>Snap</span>
-        </button>
+        <div class="dm-header-actions">
+          <button type="button" id="dm-clear-chat-btn" class="icon-btn-sm dm-clear-btn" title="Supprimer la discussion" aria-label="Supprimer la discussion">
+            <svg class="svg-icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+              <path d="M10 11v6"></path>
+              <path d="M14 11v6"></path>
+              <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path>
+            </svg>
+          </button>
+          <button id="dm-quick-snap-btn" class="btn-sm btn-icon-text">
+            <svg class="svg-icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+              <circle cx="12" cy="13" r="4"></circle>
+            </svg>
+            <span>Snap</span>
+          </button>
+        </div>
       </div>
 
       <div id="dm-messages-container" class="dm-messages-container">
@@ -412,8 +436,8 @@
 
       <form id="add-friend-form">
         <div class="form-group">
-          <label for="input-friend-pseudo">Pseudo de votre ami</label>
-          <input type="text" id="input-friend-pseudo" class="form-input" placeholder="Ex: BobSnap" required maxlength="25" autocomplete="off">
+          <label for="input-friend-pseudo">Pseudo ou Pseudo#XXXX</label>
+          <input type="text" id="input-friend-pseudo" class="form-input" placeholder="Ex: BobSnap ou BobSnap#A3F9" required maxlength="70" autocomplete="off">
         </div>
 
         <button type="submit" class="btn-primary" style="margin-top:12px;">
@@ -449,8 +473,25 @@
             <input type="file" id="profile-file-avatar" accept="image/*" style="display:none;">
           </label>
         </div>
-        <div id="profile-modal-nickname" style="font-size:18px;font-weight:800;">Pseudo</div>
-        <div id="profile-modal-uuid" style="font-size:11px;color:var(--snap-gray-text);word-break:break-all;font-family:monospace;">UUID: ...</div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span id="profile-modal-nickname" style="font-size:18px;font-weight:800;">Pseudo</span>
+          <span id="profile-modal-tag" class="user-tag-badge">#0000</span>
+        </div>
+        <div id="profile-modal-uuid" style="font-size:11px;color:var(--snap-gray-text);word-break:break-all;font-family:monospace;text-align:center;">Clé SHA-256: ...</div>
+      </div>
+
+      <!-- QR Code d'Ajout Direct -->
+      <div class="section-title">QR Code d'Ajout Direct</div>
+      <div class="qr-card">
+        <div id="profile-qr-code" class="profile-qr-box"></div>
+        <div id="profile-qr-url-preview" class="qr-url-preview"></div>
+        <button type="button" id="btn-copy-qr-url" class="btn-secondary btn-icon-text" style="margin-top:4px;margin-bottom:0;">
+          <svg class="svg-icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+          </svg>
+          <span>Copier le lien d'ajout direct</span>
+        </button>
       </div>
 
       <!-- Export / Import de Clé -->
@@ -459,7 +500,7 @@
         <svg class="svg-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M21 2l-2 2m-1.5 1.5L16 7l-2-2-4 4 2 2-3 3H7v-2l-4 4 2 2 2-2v-2l3-3 2 2 4-4-2-2 1.5-1.5L21 2z"></path>
         </svg>
-        <span>Exporter ma clé (.json & texte copiable)</span>
+        <span>Exporter tout le profil (.json & clé)</span>
       </button>
       <button id="btn-import-key-modal" class="btn-secondary btn-icon-text">
         <svg class="svg-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -581,6 +622,15 @@
 
   <!-- Menu contextuel de message (Clic droit PC / Appui long mobile) -->
   <div id="msg-context-menu" class="msg-context-menu hidden" role="menu">
+    <div id="ctx-reaction-bar" class="ctx-reaction-bar" role="group" aria-label="Réactions">
+      <button type="button" class="ctx-reaction-btn" data-emoji="❤️" title="Réagir avec ❤️">❤️</button>
+      <button type="button" class="ctx-reaction-btn" data-emoji="😂" title="Réagir avec 😂">😂</button>
+      <button type="button" class="ctx-reaction-btn" data-emoji="😮" title="Réagir avec 😮">😮</button>
+      <button type="button" class="ctx-reaction-btn" data-emoji="😢" title="Réagir avec 😢">😢</button>
+      <button type="button" class="ctx-reaction-btn" data-emoji="👍" title="Réagir avec 👍">👍</button>
+      <button type="button" class="ctx-reaction-btn" data-emoji="🔥" title="Réagir avec 🔥">🔥</button>
+    </div>
+    <div class="ctx-menu-divider"></div>
     <button type="button" id="ctx-reply-btn" class="ctx-menu-item">
       <svg class="svg-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
         <polyline points="9 14 4 9 9 4"></polyline>
@@ -601,12 +651,56 @@
       </svg>
       <span>Copier</span>
     </button>
+    <div class="ctx-menu-divider"></div>
+    <button type="button" id="ctx-delete-me-btn" class="ctx-menu-item danger">
+      <svg class="svg-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="3 6 5 6 21 6"></polyline>
+        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+        <path d="M10 11v6"></path>
+        <path d="M14 11v6"></path>
+      </svg>
+      <span>Supprimer pour moi</span>
+    </button>
+    <button type="button" id="ctx-delete-all-btn" class="ctx-menu-item danger">
+      <svg class="svg-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
+      </svg>
+      <span>Supprimer pour tout le monde</span>
+    </button>
+  </div>
+
+  <!-- Modale : Supprimer la discussion -->
+  <div id="clear-chat-modal" class="modal-backdrop">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Supprimer la discussion</h2>
+        <button id="btn-close-clear-chat-modal" class="btn-close-modal" title="Fermer">
+          <svg class="svg-icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <p id="clear-chat-subtitle" style="font-size:13px;color:var(--snap-gray-text);margin-bottom:16px;">
+        Choisissez comment supprimer les messages de cette conversation :
+      </p>
+      <div class="modal-actions-stack">
+        <button type="button" id="btn-clear-chat-me" class="btn-secondary">
+          Supprimer uniquement pour moi
+        </button>
+        <button type="button" id="btn-clear-chat-all" class="btn-danger">
+          Supprimer pour tout le monde
+        </button>
+      </div>
+    </div>
   </div>
 
   <!-- Conteneur de Notifications Toast -->
   <div id="toast-container"></div>
 
-  <!-- Scripts JavaScript (Modules ES) -->
-  <script type="module" src="js/app.js?v=3.3"></script>
+  <!-- Librairie QR Code (CDN) & Scripts JavaScript (Modules ES) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script type="module" src="js/app.js?v=4.1"></script>
 </body>
 </html>

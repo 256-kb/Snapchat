@@ -1,7 +1,7 @@
 /**
  * app.js - Contrôleur Principal de Snapchat P2P
- * Navigation 2 écrans (Chat & Caméra), zéro emoji (100% SVG),
- * gestion des demandes d'amis par pseudo, chat DM et snaps éphémères.
+ * Navigation 2 écrans (Chat & Caméra), ECDSA P-256 + Annuaire Gossip + QR d'ajout direct,
+ * sauvegarde automatique des messages et accusés Envoyé / Remis / Vu.
  */
 
 import { storage } from './storage.js';
@@ -9,18 +9,23 @@ import { p2p } from './p2p.js';
 import { camera } from './camera.js';
 import { editor } from './editor.js';
 import { viewer } from './viewer.js';
+import { formatTag, isValidPublicKeyHash } from './crypto.js';
 
 class SnapApp {
   constructor() {
     this.currentScreenIndex = 1; // 0 = Chat, 1 = Caméra (défaut au lancement)
     this.profile = null;
     this.currentDmPeer = null;
-    this.dmConversations = new Map(); // uuid -> messages
+    this.dmConversations = new Map(); // publicKeyHash -> messages
     this.pendingFriendRequests = new Map(); // requestId -> requestData
     this.preselectedRecipientUuid = null;
     this.replyingTo = null; // { id, senderUuid, senderNickname, text }
     this.contextTargetMessage = null;
     this.contextTargetIsSnap = false;
+    this.p2pListenersBound = false;
+    this.currentShareUrl = '';
+    this.showGossipDirectory = false;
+    this.chatSearchQuery = '';
 
     // Swipe tactile
     this.touchStartX = 0;
@@ -35,6 +40,18 @@ class SnapApp {
     console.log('[App] Initialisation de Snapchat P2P...');
     await storage.init();
 
+    // Capturer immédiatement un éventuel lien #add=<pseudo>:<publicKeyHash> et nettoyer l'URL
+    await this.handleUrlAddHash();
+    window.addEventListener('hashchange', () => {
+      void this.handleUrlAddHash();
+    });
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && this.currentDmPeer) {
+        void this.markConversationRead(this.currentDmPeer.uuid);
+      }
+    });
+
     this.bindSwipeGestures();
     this.bindBottomNav();
     this.bindDesktopControls();
@@ -43,21 +60,109 @@ class SnapApp {
     this.bindEditorControls();
     this.bindViewerEvents();
     this.bindDmEvents();
+    this.bindChatListControls();
     this.bindContextMenuEvents();
     this.bindFriendRequestEvents();
     this.bindKeyboardShortcuts();
 
-    this.profile = await storage.getProfile();
-    if (!this.profile) {
+    const loadedProfile = await storage.getProfile();
+    if (!loadedProfile) {
       this.showOnboardingModal();
     } else {
+      this.profile = await storage.ensureProfileCrypto(loadedProfile);
       await this.startAppWithProfile(this.profile);
     }
   }
 
+  parseAddHash(rawHash = window.location.hash) {
+    if (!rawHash || !rawHash.startsWith('#add=')) return null;
+    const payload = rawHash.slice('#add='.length).trim();
+    const sepIdx = payload.lastIndexOf(':');
+    if (sepIdx <= 0) return null;
+
+    let pseudo = '';
+    try {
+      pseudo = decodeURIComponent(payload.slice(0, sepIdx)).trim();
+    } catch (e) {
+      pseudo = payload.slice(0, sepIdx).trim();
+    }
+
+    const hash = payload.slice(sepIdx + 1).trim().toLowerCase();
+    if (!pseudo || !isValidPublicKeyHash(hash)) return null;
+
+    return {
+      uuid: hash,
+      publicKeyHash: hash,
+      tag: formatTag(hash),
+      nickname: pseudo,
+      verified: true,
+      addedVia: 'qr'
+    };
+  }
+
+  async handleUrlAddHash() {
+    const contact = this.parseAddHash(window.location.hash);
+    if (!contact) return false;
+
+    try {
+      history.replaceState(null, '', window.location.pathname + window.location.search);
+    } catch (e) {}
+
+    if (this.profile) {
+      await this.processVerifiedUrlAdd(contact);
+    } else {
+      await storage.savePendingUrlAdd(contact);
+    }
+    return true;
+  }
+
+  async applyPendingUrlAdds() {
+    const pending = await storage.getPendingUrlAdds();
+    if (!pending || pending.length === 0) return;
+    for (const contact of pending) {
+      await this.processVerifiedUrlAdd(contact);
+    }
+    await storage.clearPendingUrlAdds();
+  }
+
+  async processVerifiedUrlAdd(contact) {
+    if (!this.profile || !contact?.publicKeyHash) return;
+    const myHash = (this.profile.publicKeyHash || this.profile.uuid || '').toLowerCase();
+    if (contact.publicKeyHash.toLowerCase() === myHash) {
+      this.showToast('C\'est votre propre lien de profil');
+      return;
+    }
+
+    const dirEntry = storage.getDirectoryEntry(contact.publicKeyHash);
+    this.profile = await storage.addFriend({
+      ...contact,
+      avatar: dirEntry?.avatar || contact.avatar || '',
+      publicKey: dirEntry?.publicKey || contact.publicKey || null,
+      verified: true,
+      addedVia: 'qr'
+    });
+
+    this.renderFriendsList();
+    this.renderOnlinePeers();
+    this.renderDirectoryList();
+    this.showToast(`${contact.nickname} (${contact.tag}) ajouté comme ami vérifié`);
+  }
+
   async startAppWithProfile(profile) {
-    this.profile = profile;
+    this.profile = await storage.ensureProfileCrypto(profile);
     this.updateProfileUI();
+
+    // Charger tout l'historique persisté depuis IndexedDB / profil
+    this.dmConversations.clear();
+    const allConversations = await storage.getAllConversations();
+    for (const [peerUuid, msgs] of Object.entries(allConversations)) {
+      if (Array.isArray(msgs)) {
+        this.dmConversations.set(peerUuid.toLowerCase(), msgs.map((m) => ({ ...m })));
+      }
+    }
+
+    // Appliquer les éventuels contacts ajoutés via URL #add= avant onboarding
+    await this.applyPendingUrlAdds();
 
     // Démarrage non-bloquant de la caméra pour ne jamais retarder le réseau P2P
     const videoEl = document.getElementById('camera-video');
@@ -65,37 +170,78 @@ class SnapApp {
       console.warn('Caméra différée ou refusée:', err);
     });
 
-    await p2p.init(this.profile);
-    this.setupP2PListeners();
-
-    if (this.profile.friends) {
-      for (const friend of this.profile.friends) {
-        const saved = await storage.getSavedChatMessages(friend.uuid);
-        if (saved && saved.length > 0) {
-          this.dmConversations.set(friend.uuid, [...saved]);
-        }
-      }
+    if (!this.p2pListenersBound) {
+      this.setupP2PListeners();
+      this.p2pListenersBound = true;
     }
+    await p2p.init(this.profile);
 
     this.renderFriendsList();
     this.renderOnlinePeers();
+    this.renderDirectoryList();
     this.renderFriendRequests();
-    this.showToast(`Connecté en tant que ${this.profile.nickname}`);
+    this.showToast(`Connecté : ${this.profile.nickname} ${this.profile.tag}`);
   }
 
   updateProfileUI() {
     if (!this.profile) return;
+    const hash = this.profile.publicKeyHash || this.profile.uuid || '';
+    const tag = this.profile.tag || formatTag(hash);
+
     const avatarEl = document.getElementById('top-avatar-img');
     const pseudoEl = document.getElementById('top-user-pseudo');
+    const topTagEl = document.getElementById('top-user-tag');
     const profileModalAvatar = document.getElementById('profile-modal-avatar');
     const profileModalNickname = document.getElementById('profile-modal-nickname');
+    const profileModalTag = document.getElementById('profile-modal-tag');
     const profileModalUuid = document.getElementById('profile-modal-uuid');
 
     if (avatarEl) avatarEl.src = this.profile.avatar;
     if (pseudoEl) pseudoEl.textContent = this.profile.nickname;
+    if (topTagEl) topTagEl.textContent = tag;
     if (profileModalAvatar) profileModalAvatar.src = this.profile.avatar;
     if (profileModalNickname) profileModalNickname.textContent = this.profile.nickname;
-    if (profileModalUuid) profileModalUuid.textContent = `UUID: ${this.profile.uuid}`;
+    if (profileModalTag) profileModalTag.textContent = tag;
+    if (profileModalUuid) profileModalUuid.textContent = `Clé SHA-256: ${hash}`;
+
+    this.renderProfileQrCode();
+  }
+
+  renderProfileQrCode() {
+    if (!this.profile) return;
+    const hash = this.profile.publicKeyHash || this.profile.uuid;
+    const shareUrl = `https://256kb.xyz/Snapchat/#add=${encodeURIComponent(this.profile.nickname)}:${hash}`;
+    this.currentShareUrl = shareUrl;
+
+    const previewEl = document.getElementById('profile-qr-url-preview');
+    if (previewEl) {
+      previewEl.textContent = shareUrl;
+    }
+
+    const qrBox = document.getElementById('profile-qr-code');
+    if (!qrBox) return;
+    qrBox.innerHTML = '';
+
+    if (typeof window.QRCode === 'function') {
+      try {
+        new window.QRCode(qrBox, {
+          text: shareUrl,
+          width: 176,
+          height: 176,
+          colorDark: '#000000',
+          colorLight: '#ffffff',
+          correctLevel: window.QRCode.CorrectLevel?.M || 0
+        });
+        return;
+      } catch (err) {
+        console.warn('Erreur génération QRCode:', err);
+      }
+    }
+
+    const fallback = document.createElement('div');
+    fallback.style.cssText = 'color:#111;font-size:12px;font-weight:700;text-align:center;padding:12px;';
+    fallback.textContent = 'QR Code indisponible hors ligne — copiez le lien ci-dessous.';
+    qrBox.appendChild(fallback);
   }
 
   /**
@@ -202,6 +348,12 @@ class SnapApp {
       const ctxMenu = document.getElementById('msg-context-menu');
       if (ctxMenu && !ctxMenu.classList.contains('hidden')) {
         this.hideContextMenu();
+        return;
+      }
+
+      const clearChatModal = document.getElementById('clear-chat-modal');
+      if (clearChatModal && clearChatModal.style.display === 'flex') {
+        clearChatModal.style.display = 'none';
         return;
       }
 
@@ -440,12 +592,16 @@ class SnapApp {
         const row = document.createElement('label');
         row.className = 'checkbox-row';
         row.style.cssText = 'background:var(--snap-dark);padding:10px 14px;border-radius:14px;';
+        const targetTag = target.tag || formatTag(target.uuid);
         row.innerHTML = `
           <input type="checkbox" class="send-recipient-checkbox" value="${target.uuid}" ${isPreselected ? 'checked' : ''}>
           <div style="display:flex;align-items:center;gap:10px;flex:1;overflow:hidden;">
             <img src="${target.avatar || storage.createDefaultAvatar(target.nickname)}" style="width:34px;height:34px;border-radius:50%;object-fit:cover;">
             <div style="overflow:hidden;">
-              <div style="font-weight:700;font-size:14px;white-space:nowrap;text-overflow:ellipsis;">${target.nickname}</div>
+              <div class="user-nickname-row" style="font-weight:700;font-size:14px;">
+                <span class="user-nickname-text">${this.escapeHtml(target.nickname)}</span>
+                <span class="user-tag-badge">${targetTag}</span>
+              </div>
               <div style="font-size:11px;color:${target.isOnline ? 'var(--snap-green)' : 'var(--snap-gray-text)'};">
                 ${target.isOnline ? '● En ligne' : '○ Hors ligne'}
               </div>
@@ -481,14 +637,16 @@ class SnapApp {
         if (!this.dmConversations.has(uuid)) {
           this.dmConversations.set(uuid, []);
         }
-        this.dmConversations.get(uuid).push({
+        const snapEntry = {
           id: sentSnap.id,
           type: 'snap',
           mediaType: snapPayload.mediaType,
           isOutgoing: true,
           isOpened: false,
           timestamp: Date.now()
-        });
+        };
+        this.dmConversations.get(uuid).push(snapEntry);
+        void storage.upsertConversationMessage(uuid, snapEntry);
       });
 
       this.showToast(`Snap envoyé à ${selectedUuids.length} ami(s)`);
@@ -522,7 +680,7 @@ class SnapApp {
       timerText: document.getElementById('viewer-timer-number')
     });
 
-    viewer.onSnapFinished = (snap) => {
+    viewer.onSnapFinished = async (snap) => {
       if (snap.senderUuid && snap.id) {
         p2p.sendSnapReceipt(snap.id, snap.senderUuid);
       }
@@ -532,8 +690,10 @@ class SnapApp {
         const targetSnap = conv.find((m) => m.id === snap.id);
         if (targetSnap) {
           targetSnap.isOpened = true;
+          targetSnap.mediaData = null;
           targetSnap.openedAt = Date.now();
         }
+        await storage.setConversationMessages(snap.senderUuid, conv);
       }
 
       this.renderFriendsList();
@@ -578,20 +738,24 @@ class SnapApp {
       const text = dmInput.value.trim();
       if (!text || !this.currentDmPeer) return;
 
+      const peerUuid = this.currentDmPeer.uuid;
       const replyToPayload = this.replyingTo ? { ...this.replyingTo } : null;
-      const msg = p2p.sendMessage(this.currentDmPeer.uuid, text, true, replyToPayload);
+      const msg = p2p.sendMessage(peerUuid, text, false, replyToPayload);
 
-      if (!this.dmConversations.has(this.currentDmPeer.uuid)) {
-        this.dmConversations.set(this.currentDmPeer.uuid, []);
+      if (!this.dmConversations.has(peerUuid)) {
+        this.dmConversations.set(peerUuid, []);
       }
-      this.dmConversations.get(this.currentDmPeer.uuid).push({
+      const outgoingEntry = {
         ...msg,
-        isOutgoing: true
-      });
+        isOutgoing: true,
+        status: 'sent'
+      };
+      this.dmConversations.get(peerUuid).push(outgoingEntry);
+      await storage.upsertConversationMessage(peerUuid, outgoingEntry);
 
       dmInput.value = '';
       this.clearReplyTarget();
-      p2p.sendTyping(this.currentDmPeer.uuid, false);
+      p2p.sendTyping(peerUuid, false);
       this.renderDmMessages();
       this.renderFriendsList();
     });
@@ -617,6 +781,19 @@ class SnapApp {
       this.goToScreen(1); // Caméra
       this.showToast(`Prenez un Snap pour ${this.currentDmPeer.nickname}`);
     });
+
+    const clearChatBtn = document.getElementById('dm-clear-chat-btn');
+    if (clearChatBtn) {
+      clearChatBtn.addEventListener('click', () => {
+        if (!this.currentDmPeer) return;
+        const clearModal = document.getElementById('clear-chat-modal');
+        const subtitle = document.getElementById('clear-chat-subtitle');
+        if (subtitle) {
+          subtitle.textContent = `Choisissez comment supprimer votre discussion avec ${this.currentDmPeer.nickname} :`;
+        }
+        if (clearModal) clearModal.style.display = 'flex';
+      });
+    }
   }
 
   /**
@@ -627,8 +804,20 @@ class SnapApp {
     const replyBtn = document.getElementById('ctx-reply-btn');
     const saveBtn = document.getElementById('ctx-save-btn');
     const copyBtn = document.getElementById('ctx-copy-btn');
+    const deleteMeBtn = document.getElementById('ctx-delete-me-btn');
+    const deleteAllBtn = document.getElementById('ctx-delete-all-btn');
 
     if (!menu) return;
+
+    menu.querySelectorAll('.ctx-reaction-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const emoji = btn.dataset.emoji;
+        if (this.contextTargetMessage && emoji) {
+          await this.toggleReaction(this.contextTargetMessage, emoji);
+        }
+        this.hideContextMenu();
+      });
+    });
 
     replyBtn.addEventListener('click', () => {
       if (this.contextTargetMessage) {
@@ -657,6 +846,24 @@ class SnapApp {
       this.hideContextMenu();
     });
 
+    if (deleteMeBtn) {
+      deleteMeBtn.addEventListener('click', async () => {
+        if (this.contextTargetMessage) {
+          await this.deleteMessage(this.contextTargetMessage, 'me');
+        }
+        this.hideContextMenu();
+      });
+    }
+
+    if (deleteAllBtn) {
+      deleteAllBtn.addEventListener('click', async () => {
+        if (this.contextTargetMessage && this.contextTargetMessage.isOutgoing) {
+          await this.deleteMessage(this.contextTargetMessage, 'all');
+        }
+        this.hideContextMenu();
+      });
+    }
+
     // Fermer le menu si clic ou scroll en dehors
     document.addEventListener('pointerdown', (e) => {
       if (!menu.classList.contains('hidden') && !menu.contains(e.target)) {
@@ -675,10 +882,19 @@ class SnapApp {
     const saveBtn = document.getElementById('ctx-save-btn');
     const saveLabel = document.getElementById('ctx-save-label');
     const copyBtn = document.getElementById('ctx-copy-btn');
-    if (!menu) return;
+    const deleteAllBtn = document.getElementById('ctx-delete-all-btn');
+    if (!menu || !message || message.type === 'system') return;
 
     this.contextTargetMessage = message;
     this.contextTargetIsSnap = isSnap;
+
+    menu.querySelectorAll('.ctx-reaction-btn').forEach((btn) => {
+      const emoji = btn.dataset.emoji;
+      const hasReacted =
+        Array.isArray(message.reactions?.[emoji]) &&
+        message.reactions[emoji].includes(this.profile?.uuid);
+      btn.classList.toggle('active', hasReacted);
+    });
 
     if (isSnap) {
       saveBtn.classList.add('hidden');
@@ -687,6 +903,10 @@ class SnapApp {
       saveBtn.classList.remove('hidden');
       copyBtn.classList.remove('hidden');
       saveLabel.textContent = message.saved ? 'Désenregistrer du chat' : 'Enregistrer dans le chat';
+    }
+
+    if (deleteAllBtn) {
+      deleteAllBtn.classList.toggle('hidden', !message.isOutgoing);
     }
 
     menu.classList.remove('hidden');
@@ -763,6 +983,167 @@ class SnapApp {
       await storage.unsaveChatMessage(this.currentDmPeer.uuid, message.id);
       this.showToast('Message désenregistré');
     }
+  }
+
+  applyReactionUpdate(message, emoji, reactorUuid, active) {
+    if (!message || !emoji || !reactorUuid) return;
+    if (!message.reactions || typeof message.reactions !== 'object') {
+      message.reactions = {};
+    }
+
+    const list = Array.isArray(message.reactions[emoji]) ? [...message.reactions[emoji]] : [];
+    const idx = list.indexOf(reactorUuid);
+
+    if (active && idx === -1) {
+      list.push(reactorUuid);
+    } else if (!active && idx !== -1) {
+      list.splice(idx, 1);
+    }
+
+    if (list.length > 0) {
+      message.reactions[emoji] = list;
+    } else {
+      delete message.reactions[emoji];
+    }
+  }
+
+  escapeHtml(str) {
+    return String(str ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  async toggleReaction(message, emoji, peerUuid = this.currentDmPeer?.uuid) {
+    if (!peerUuid || !message || !message.id || !this.profile?.uuid || message.type === 'system') return;
+
+    const existing = message.reactions?.[emoji] || [];
+    const shouldAdd = !existing.includes(this.profile.uuid);
+
+    this.applyReactionUpdate(message, emoji, this.profile.uuid, shouldAdd);
+    await storage.upsertConversationMessage(peerUuid, message);
+
+    p2p.sendReaction(peerUuid, message.id, emoji, shouldAdd);
+
+    if (this.currentDmPeer && this.currentDmPeer.uuid === peerUuid) {
+      this.renderDmMessages();
+    }
+  }
+
+  async deleteMessage(message, scope = 'me', peerUuid = this.currentDmPeer?.uuid) {
+    if (!peerUuid || !message || !message.id || message.type === 'system') return;
+    if (scope === 'all' && !message.isOutgoing) return;
+
+    const conv = this.dmConversations.get(peerUuid);
+    if (!conv) return;
+
+    const idx = conv.findIndex((m) => m.id === message.id);
+    if (idx === -1) return;
+
+    if (message.type === 'snap') {
+      message.mediaData = null;
+    }
+
+    if (this.replyingTo && this.replyingTo.id === message.id) {
+      this.clearReplyTarget();
+    }
+
+    if (scope === 'all') {
+      conv[idx] = {
+        id: 'sys_del_' + message.id,
+        type: 'system',
+        text: 'Vous avez supprimé un message',
+        timestamp: Date.now()
+      };
+      await storage.setConversationMessages(peerUuid, conv);
+      p2p.sendDeleteMessage(peerUuid, message.id);
+      this.showToast('Message supprimé pour tout le monde');
+    } else {
+      conv.splice(idx, 1);
+      await storage.setConversationMessages(peerUuid, conv);
+      this.showToast('Message supprimé pour vous');
+    }
+
+    if (this.currentDmPeer && this.currentDmPeer.uuid === peerUuid) {
+      this.renderDmMessages();
+    }
+    this.renderFriendsList();
+  }
+
+  async clearConversation(peerUuid, scope = 'me') {
+    if (!peerUuid) return;
+
+    const conv = this.dmConversations.get(peerUuid) || [];
+    conv.forEach((m) => {
+      if (m.type === 'snap') m.mediaData = null;
+    });
+
+    if (this.currentDmPeer && this.currentDmPeer.uuid === peerUuid) {
+      this.clearReplyTarget();
+      this.hideContextMenu();
+    }
+
+    if (scope === 'all') {
+      const notice = {
+        id: 'sys_clear_' + Date.now(),
+        type: 'system',
+        text: 'Vous avez supprimé la discussion pour tout le monde',
+        timestamp: Date.now()
+      };
+      this.dmConversations.set(peerUuid, [notice]);
+      await storage.clearChatMessages(peerUuid, notice);
+      p2p.sendClearChat(peerUuid);
+      this.showToast('Discussion supprimée pour tout le monde');
+    } else {
+      this.dmConversations.set(peerUuid, []);
+      await storage.clearChatMessages(peerUuid, null);
+      this.showToast('Discussion supprimée uniquement pour vous');
+    }
+
+    if (this.currentDmPeer && this.currentDmPeer.uuid === peerUuid) {
+      this.renderDmMessages();
+    }
+    this.renderFriendsList();
+  }
+
+  createReactionsElement(message) {
+    if (!message?.reactions || typeof message.reactions !== 'object') return null;
+    const entries = Object.entries(message.reactions).filter(
+      ([, users]) => Array.isArray(users) && users.length > 0
+    );
+    if (entries.length === 0) return null;
+
+    const bar = document.createElement('div');
+    bar.className = 'chat-reactions';
+
+    entries.forEach(([emoji, users]) => {
+      const pill = document.createElement('button');
+      pill.type = 'button';
+      pill.className = `chat-reaction-pill ${users.includes(this.profile?.uuid) ? 'reacted' : ''}`;
+      pill.title = 'Cliquer pour ajouter / retirer cette réaction';
+
+      const emojiSpan = document.createElement('span');
+      emojiSpan.textContent = emoji;
+      pill.appendChild(emojiSpan);
+
+      if (users.length > 1) {
+        const countSpan = document.createElement('span');
+        countSpan.className = 'chat-reaction-count';
+        countSpan.textContent = String(users.length);
+        pill.appendChild(countSpan);
+      }
+
+      pill.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        await this.toggleReaction(message, emoji);
+      });
+
+      bar.appendChild(pill);
+    });
+
+    return bar;
   }
 
   attachMessageInteractions(el, message, isSnap, onShortClick) {
@@ -847,11 +1228,15 @@ class SnapApp {
     const appContainer = document.getElementById('app-container');
     const avatar = document.getElementById('dm-peer-avatar');
     const name = document.getElementById('dm-peer-name');
+    const tagEl = document.getElementById('dm-peer-tag');
     const statusText = document.getElementById('dm-peer-status-text');
     const statusDot = document.getElementById('dm-peer-status-dot');
 
     avatar.src = peer.avatar || storage.createDefaultAvatar(peer.nickname);
     name.textContent = peer.nickname;
+    if (tagEl) {
+      tagEl.textContent = peer.tag || formatTag(peer.publicKeyHash || peer.uuid);
+    }
 
     const isOnline = p2p.isUserOnline(peer.uuid);
     statusText.textContent = isOnline ? 'En ligne' : 'Vu récemment';
@@ -861,6 +1246,8 @@ class SnapApp {
     this.unreadChatsCount = 0;
     const badge = document.getElementById('unread-chat-badge');
     if (badge) badge.classList.add('hidden');
+
+    void this.markConversationRead(peer.uuid);
 
     this.renderDmMessages();
     appContainer.classList.add('in-dm');
@@ -873,6 +1260,26 @@ class SnapApp {
     }
   }
 
+  async markConversationRead(peerUuid) {
+    if (!peerUuid) return;
+    const conv = this.dmConversations.get(peerUuid);
+    if (!conv || conv.length === 0) return;
+
+    const unreadIds = [];
+    for (const m of conv) {
+      if (!m.isOutgoing && m.type !== 'snap' && m.type !== 'system' && !m.readAckSent && m.id) {
+        m.readAckSent = true;
+        unreadIds.push(m.id);
+      }
+    }
+
+    if (unreadIds.length > 0) {
+      await storage.setConversationMessages(peerUuid, conv);
+      p2p.sendMessageReceipt(peerUuid, unreadIds, 'read');
+      this.renderFriendsList();
+    }
+  }
+
   renderDmMessages() {
     const container = document.getElementById('dm-messages-container');
     container.innerHTML = '';
@@ -881,15 +1288,33 @@ class SnapApp {
     const messages = this.dmConversations.get(this.currentDmPeer.uuid) || [];
 
     if (messages.length === 0) {
-      container.innerHTML = `
-        <div style="text-align:center;color:var(--snap-gray-text);font-size:12px;margin:auto;">
-          C'est le début de votre discussion avec <strong>${this.currentDmPeer.nickname}</strong>.
-          <br>Clic droit (PC) ou appui long (mobile) sur un message pour y répondre !
-        </div>`;
+      const emptyEl = document.createElement('div');
+      emptyEl.style.cssText = 'text-align:center;color:var(--snap-gray-text);font-size:12px;margin:auto;';
+      emptyEl.appendChild(document.createTextNode('C\'est le début de votre discussion avec '));
+      const strong = document.createElement('strong');
+      strong.textContent = this.currentDmPeer.nickname;
+      emptyEl.appendChild(strong);
+      emptyEl.appendChild(document.createTextNode('.'));
+      emptyEl.appendChild(document.createElement('br'));
+      emptyEl.appendChild(
+        document.createTextNode('Clic droit (PC) ou appui long (mobile) sur un message pour réagir, répondre ou supprimer !')
+      );
+      container.appendChild(emptyEl);
       return;
     }
 
     messages.forEach((m) => {
+      if (m.type === 'system') {
+        const notice = document.createElement('div');
+        notice.className = 'dm-system-notice';
+        notice.textContent = m.text || 'Message supprimé';
+        container.appendChild(notice);
+        return;
+      }
+
+      const wrapper = document.createElement('div');
+      wrapper.className = `chat-msg-wrapper ${m.isOutgoing ? 'outgoing' : 'incoming'}`;
+
       if (m.type === 'snap') {
         const snapCard = document.createElement('div');
         snapCard.className = `dm-snap-card ${m.isOutgoing ? 'outgoing' : 'incoming'}`;
@@ -930,12 +1355,12 @@ class SnapApp {
           }
         });
 
-        container.appendChild(snapCard);
+        wrapper.appendChild(snapCard);
       } else {
         const bubble = document.createElement('div');
         bubble.className = `chat-bubble ${m.isOutgoing ? 'outgoing' : 'incoming'} ${m.saved ? 'saved' : ''}`;
         if (m.id) bubble.dataset.msgId = m.id;
-        bubble.title = 'Clic droit / Appui long : Répondre • Clic : Enregistrer';
+        bubble.title = 'Clic droit / Appui long : Réagir, Répondre, Supprimer • Clic : Enregistrer';
 
         // En-tête auteur + heure (style Snapchat Web)
         const meta = document.createElement('div');
@@ -993,13 +1418,45 @@ class SnapApp {
         bodyEl.textContent = m.text;
         bubble.appendChild(bodyEl);
 
+        // Statut Envoyé / Remis / Vu sur les messages sortants
+        if (m.isOutgoing) {
+          const st = m.status || 'sent';
+          const statusEl = document.createElement('div');
+          statusEl.className = `chat-msg-status status-${st}`;
+
+          if (st === 'read' || st === 'delivered') {
+            statusEl.innerHTML = `
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="18 6 9 17 4 12"></polyline>
+                <polyline points="22 10 13 21 11 19"></polyline>
+              </svg>
+              <span>${st === 'read' ? 'Vu' : 'Remis'}</span>
+            `;
+          } else {
+            statusEl.innerHTML = `
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+              <span>Envoyé</span>
+            `;
+          }
+          bubble.appendChild(statusEl);
+        }
+
         this.attachMessageInteractions(bubble, m, false, async () => {
           await this.toggleMessageSave(m);
           bubble.classList.toggle('saved', m.saved);
         });
 
-        container.appendChild(bubble);
+        wrapper.appendChild(bubble);
       }
+
+      const reactionsEl = this.createReactionsElement(m);
+      if (reactionsEl) {
+        wrapper.appendChild(reactionsEl);
+      }
+
+      container.appendChild(wrapper);
     });
 
     container.scrollTop = container.scrollHeight;
@@ -1029,32 +1486,44 @@ class SnapApp {
 
     form.addEventListener('submit', (e) => {
       e.preventDefault();
-      const pseudo = input.value.trim();
-      if (!pseudo) return;
+      const query = input.value.trim();
+      if (!query) return;
 
-      if (pseudo.toLowerCase() === this.profile.nickname.toLowerCase()) {
+      const myHash = (this.profile.publicKeyHash || this.profile.uuid || '').toLowerCase();
+      const myTag = (this.profile.tag || formatTag(myHash)).toUpperCase();
+      const myNickTag = `${this.profile.nickname.toLowerCase()}${myTag.toLowerCase()}`;
+      if (
+        query.toLowerCase() === this.profile.nickname.toLowerCase() ||
+        query.toLowerCase() === myNickTag ||
+        query.toLowerCase() === myHash
+      ) {
         this.showToast('Vous ne pouvez pas vous ajouter vous-même');
         return;
       }
 
+      const matchedPeer = p2p.findPeerByPseudo(query);
+      const dirPeer = storage.resolvePeerInDirectory(query);
+      const targetUuid = matchedPeer?.uuid || dirPeer?.publicKeyHash || null;
+
       // Vérifier si déjà ami
-      const isAlreadyFriend = this.profile.friends?.some(
-        (f) => f.nickname.toLowerCase() === pseudo.toLowerCase()
-      );
+      const isAlreadyFriend = this.profile.friends?.some((f) => {
+        if (targetUuid && (f.publicKeyHash || f.uuid || '').toLowerCase() === targetUuid) {
+          return true;
+        }
+        return f.nickname.toLowerCase() === query.toLowerCase();
+      });
       if (isAlreadyFriend) {
-        this.showToast(`${pseudo} est déjà dans vos amis`);
+        this.showToast(`${query} est déjà dans vos amis`);
         addModal.style.display = 'none';
         input.value = '';
         return;
       }
 
-      // Recherche si le pair est actuellement connecté dans la room
-      const matchedPeer = p2p.findPeerByPseudo(pseudo);
-      p2p.sendFriendRequest(pseudo, matchedPeer ? matchedPeer.uuid : null);
+      p2p.sendFriendRequest(query, targetUuid);
 
       addModal.style.display = 'none';
       input.value = '';
-      this.showToast(`Demande d'ami envoyée à ${pseudo}`);
+      this.showToast(`Demande d'ami envoyée à ${query}`);
     });
   }
 
@@ -1072,14 +1541,18 @@ class SnapApp {
     list.innerHTML = '';
 
     this.pendingFriendRequests.forEach((req) => {
+      const reqTag = req.fromTag || formatTag(req.fromUuid);
       const card = document.createElement('div');
       card.className = 'friend-request-card';
       card.innerHTML = `
         <div style="display:flex;align-items:center;gap:10px;overflow:hidden;">
           <img src="${req.fromAvatar || storage.createDefaultAvatar(req.fromNickname)}" style="width:38px;height:38px;border-radius:50%;object-fit:cover;">
           <div style="overflow:hidden;">
-            <div style="font-weight:700;font-size:14px;white-space:nowrap;text-overflow:ellipsis;">${req.fromNickname}</div>
-            <div style="font-size:11px;color:var(--snap-yellow);">Demande d'ami reçue</div>
+            <div class="user-nickname-row" style="font-weight:700;font-size:14px;">
+              <span class="user-nickname-text">${this.escapeHtml(req.fromNickname)}</span>
+              <span class="user-tag-badge">${reqTag}</span>
+            </div>
+            <div style="font-size:11px;color:var(--snap-yellow);">Demande d'ami signée reçue</div>
           </div>
         </div>
         <div class="friend-req-actions">
@@ -1099,15 +1572,20 @@ class SnapApp {
         p2p.sendFriendResponse(req.requestId, req.fromUuid, true);
         await storage.addFriend({
           uuid: req.fromUuid,
+          publicKeyHash: req.fromUuid,
+          tag: reqTag,
           nickname: req.fromNickname,
-          avatar: req.fromAvatar
+          avatar: req.fromAvatar,
+          publicKey: req.fromPublicKey || null,
+          verified: true
         });
         this.profile = await storage.getProfile();
         this.pendingFriendRequests.delete(req.requestId);
         this.renderFriendRequests();
         this.renderFriendsList();
         this.renderOnlinePeers();
-        this.showToast(`${req.fromNickname} ajouté à vos amis !`);
+        this.renderDirectoryList();
+        this.showToast(`${req.fromNickname} (${reqTag}) ajouté à vos amis !`);
       };
 
       card.querySelector('.btn-req-refuse').onclick = () => {
@@ -1150,25 +1628,73 @@ class SnapApp {
       if (chatRoom) chatRoom.textContent = roomId;
     });
 
-    p2p.on('chatMessage', (msg) => {
+    p2p.on('chatMessage', async (msg) => {
       const senderUuid = msg.senderUuid;
       if (!this.dmConversations.has(senderUuid)) {
         this.dmConversations.set(senderUuid, []);
       }
-      this.dmConversations.get(senderUuid).push({
+
+      const isActivelyReading =
+        this.currentDmPeer &&
+        this.currentDmPeer.uuid === senderUuid &&
+        document.visibilityState === 'visible';
+
+      const incomingEntry = {
         ...msg,
-        isOutgoing: false
-      });
+        isOutgoing: false,
+        readAckSent: !!isActivelyReading
+      };
+      this.dmConversations.get(senderUuid).push(incomingEntry);
+      await storage.upsertConversationMessage(senderUuid, incomingEntry);
+
+      // Envoyer accusé "Remis" immédiat + "Vu" si la discussion est active à l'écran
+      if (msg.id) {
+        p2p.sendMessageReceipt(senderUuid, [msg.id], 'delivered');
+        if (isActivelyReading) {
+          p2p.sendMessageReceipt(senderUuid, [msg.id], 'read');
+        }
+      }
 
       if (this.currentDmPeer && this.currentDmPeer.uuid === senderUuid) {
         this.renderDmMessages();
       } else {
         const peer = p2p.peers.get(msg.fromPeerId);
-        const name = peer?.nickname || 'Un ami';
+        const name = peer?.nickname || storage.getDirectoryEntry(senderUuid)?.pseudo || 'Un ami';
         this.showToast(`Nouveau message de ${name}`);
         this.incrementChatBadge();
       }
       this.renderFriendsList();
+    });
+
+    p2p.on('messageReceipt', async (data) => {
+      const peerUuid = data.senderUuid;
+      const conv = this.dmConversations.get(peerUuid);
+      if (!conv || !Array.isArray(data.messageIds)) return;
+
+      const statusRank = { sent: 1, delivered: 2, read: 3 };
+      const nextRank = statusRank[data.status] || 0;
+      if (nextRank === 0) return;
+
+      let updated = false;
+      for (const m of conv) {
+        if (m.isOutgoing && data.messageIds.includes(m.id)) {
+          const curRank = statusRank[m.status || 'sent'] || 1;
+          if (nextRank > curRank) {
+            m.status = data.status;
+            if (data.status === 'delivered') m.deliveredAt = data.timestamp || Date.now();
+            if (data.status === 'read') m.readAt = data.timestamp || Date.now();
+            updated = true;
+          }
+        }
+      }
+
+      if (updated) {
+        await storage.setConversationMessages(peerUuid, conv);
+        if (this.currentDmPeer && this.currentDmPeer.uuid === peerUuid) {
+          this.renderDmMessages();
+        }
+        this.renderFriendsList();
+      }
     });
 
     p2p.on('typing', (data) => {
@@ -1180,19 +1706,21 @@ class SnapApp {
       }
     });
 
-    p2p.on('snap', (snapData) => {
+    p2p.on('snap', async (snapData) => {
       const senderUuid = snapData.senderUuid;
 
       if (!this.dmConversations.has(senderUuid)) {
         this.dmConversations.set(senderUuid, []);
       }
 
-      this.dmConversations.get(senderUuid).push({
+      const incomingSnap = {
         ...snapData,
         type: 'snap',
         isOutgoing: false,
         isOpened: false
-      });
+      };
+      this.dmConversations.get(senderUuid).push(incomingSnap);
+      await storage.upsertConversationMessage(senderUuid, incomingSnap);
 
       this.showToast(`Nouveau Snap reçu de ${snapData.senderNickname || 'un ami'}`);
       this.incrementChatBadge();
@@ -1203,7 +1731,7 @@ class SnapApp {
       }
     });
 
-    p2p.on('snapOpened', (receipt) => {
+    p2p.on('snapOpened', async (receipt) => {
       const targetUuid = receipt.openerUuid;
       if (this.dmConversations.has(targetUuid)) {
         const conv = this.dmConversations.get(targetUuid);
@@ -1211,6 +1739,7 @@ class SnapApp {
         if (snap) {
           snap.isOpened = true;
           snap.openedAt = receipt.openedAt;
+          await storage.setConversationMessages(targetUuid, conv);
         }
       }
       this.renderFriendsList();
@@ -1219,11 +1748,108 @@ class SnapApp {
       }
     });
 
+    p2p.on('messageReaction', async (data) => {
+      const peerUuid = data.senderUuid;
+      const conv = this.dmConversations.get(peerUuid);
+      if (!conv) return;
+
+      const targetMsg = conv.find((m) => m.id === data.messageId);
+      if (!targetMsg || targetMsg.type === 'system') return;
+
+      this.applyReactionUpdate(targetMsg, data.emoji, data.senderUuid, data.active);
+      await storage.upsertConversationMessage(peerUuid, targetMsg);
+
+      if (this.currentDmPeer && this.currentDmPeer.uuid === peerUuid) {
+        this.renderDmMessages();
+      }
+    });
+
+    p2p.on('messageDelete', async (data) => {
+      const peerUuid = data.senderUuid;
+      const conv = this.dmConversations.get(peerUuid);
+      if (!conv) return;
+
+      const idx = conv.findIndex((m) => m.id === data.messageId);
+      if (idx === -1) return;
+
+      const targetMsg = conv[idx];
+      if (targetMsg.isOutgoing) return;
+
+      if (targetMsg.type === 'snap') {
+        targetMsg.mediaData = null;
+      }
+
+      if (this.replyingTo && this.replyingTo.id === data.messageId) {
+        this.clearReplyTarget();
+      }
+
+      const peerName =
+        data.senderNickname ||
+        p2p.peers.get(data.fromPeerId)?.nickname ||
+        storage.getDirectoryEntry(peerUuid)?.pseudo ||
+        (this.currentDmPeer?.uuid === peerUuid ? this.currentDmPeer.nickname : null) ||
+        'Un ami';
+
+      conv[idx] = {
+        id: 'sys_del_' + data.messageId,
+        type: 'system',
+        text: `${peerName} a supprimé un message`,
+        timestamp: Date.now()
+      };
+      await storage.setConversationMessages(peerUuid, conv);
+
+      if (this.currentDmPeer && this.currentDmPeer.uuid === peerUuid) {
+        this.renderDmMessages();
+      }
+      this.renderFriendsList();
+    });
+
+    p2p.on('chatClear', async (data) => {
+      const peerUuid = data.senderUuid;
+      const conv = this.dmConversations.get(peerUuid) || [];
+      conv.forEach((m) => {
+        if (m.type === 'snap') m.mediaData = null;
+      });
+
+      const peerName =
+        data.senderNickname ||
+        p2p.peers.get(data.fromPeerId)?.nickname ||
+        storage.getDirectoryEntry(peerUuid)?.pseudo ||
+        (this.currentDmPeer?.uuid === peerUuid ? this.currentDmPeer.nickname : null) ||
+        'Votre ami';
+
+      const notice = {
+        id: 'sys_clear_' + Date.now(),
+        type: 'system',
+        text: `${peerName} a supprimé la discussion`,
+        timestamp: Date.now()
+      };
+
+      this.dmConversations.set(peerUuid, [notice]);
+      await storage.clearChatMessages(peerUuid, notice);
+
+      if (this.currentDmPeer && this.currentDmPeer.uuid === peerUuid) {
+        this.clearReplyTarget();
+        this.hideContextMenu();
+        this.renderDmMessages();
+      } else {
+        this.showToast(`${peerName} a supprimé votre discussion`);
+      }
+      this.renderFriendsList();
+    });
+
+    p2p.on('directoryUpdate', async () => {
+      this.profile = await storage.getProfile();
+      this.renderDirectoryList();
+      this.renderFriendsList();
+      this.renderOnlinePeers();
+    });
+
     // Demande d'ami reçue
     p2p.on('friendRequest', (req) => {
       this.pendingFriendRequests.set(req.requestId, req);
       this.renderFriendRequests();
-      this.showToast(`Demande d'ami reçue de ${req.fromNickname}`);
+      this.showToast(`Demande d'ami reçue de ${req.fromNickname} (${req.fromTag || ''})`);
     });
 
     // Réponse à une demande d'ami
@@ -1231,13 +1857,18 @@ class SnapApp {
       if (resp.accepted) {
         await storage.addFriend({
           uuid: resp.fromUuid,
+          publicKeyHash: resp.fromUuid,
+          tag: resp.fromTag || formatTag(resp.fromUuid),
           nickname: resp.fromNickname,
-          avatar: resp.fromAvatar
+          avatar: resp.fromAvatar,
+          publicKey: resp.fromPublicKey || null,
+          verified: true
         });
         this.profile = await storage.getProfile();
         this.renderFriendsList();
         this.renderOnlinePeers();
-        this.showToast(`${resp.fromNickname} a accepté votre demande d'ami !`);
+        this.renderDirectoryList();
+        this.showToast(`${resp.fromNickname} (${resp.fromTag || ''}) a accepté votre demande d'ami !`);
       } else {
         this.showToast(`${resp.fromNickname} a décliné la demande`);
       }
@@ -1249,23 +1880,209 @@ class SnapApp {
    * RENDU DES LISTES (AMIS & PAIRS EN LIGNE)
    * =========================================================================
    */
+  bindChatListControls() {
+    const searchInput = document.getElementById('chat-search-input');
+    const toggleGossipBtn = document.getElementById('btn-toggle-gossip');
+
+    if (searchInput) {
+      searchInput.addEventListener('input', (e) => {
+        this.chatSearchQuery = e.target.value.trim().toLowerCase();
+        this.renderUnifiedList();
+      });
+    }
+
+    if (toggleGossipBtn) {
+      toggleGossipBtn.addEventListener('click', () => {
+        this.showGossipDirectory = !this.showGossipDirectory;
+        toggleGossipBtn.classList.toggle('active', this.showGossipDirectory);
+        this.renderUnifiedList();
+      });
+    }
+  }
+
+  getVerifiedBadgeHtml(isVerified) {
+    if (!isVerified) return '';
+    return `
+      <span class="verified-badge" title="Identité vérifiée ECDSA">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+          <polyline points="9 12 11 14 15 10"></polyline>
+        </svg>
+      </span>
+    `;
+  }
+
   renderFriendsList() {
-    const container = document.getElementById('friends-list-container');
-    if (!this.profile.friends || this.profile.friends.length === 0) {
+    this.renderUnifiedList();
+  }
+
+  renderOnlinePeers() {
+    this.renderUnifiedList();
+  }
+
+  renderDirectoryList() {
+    this.renderUnifiedList();
+  }
+
+  renderUnifiedList() {
+    const container = document.getElementById('unified-chats-container');
+    const countBadge = document.getElementById('directory-count-badge');
+    if (!container || !this.profile) return;
+
+    const myHash = (this.profile.publicKeyHash || this.profile.uuid || '').toLowerCase();
+    const dirEntries = storage
+      .getDirectoryEntries()
+      .filter((e) => e.publicKeyHash.toLowerCase() !== myHash);
+
+    if (countBadge) {
+      countBadge.textContent = String(dirEntries.length);
+    }
+
+    const onlinePeers = p2p.getOnlinePeers();
+    const onlineMap = new Map();
+    onlinePeers.forEach((p) => {
+      const id = (p.publicKeyHash || p.uuid || '').toLowerCase();
+      if (id && id !== myHash) onlineMap.set(id, p);
+    });
+
+    const merged = new Map();
+
+    // 1. Amis sauvegardés
+    (this.profile.friends || []).forEach((f) => {
+      const id = (f.publicKeyHash || f.uuid || '').toLowerCase();
+      if (!id || id === myHash) return;
+      const online = onlineMap.get(id);
+      const dir = storage.getDirectoryEntry(id);
+      merged.set(id, {
+        uuid: id,
+        publicKeyHash: id,
+        tag: f.tag || online?.tag || dir?.tag || formatTag(id),
+        nickname: online?.nickname || dir?.pseudo || f.nickname || 'Ami',
+        avatar: online?.avatar || dir?.avatar || f.avatar || '',
+        publicKey: f.publicKey || online?.publicKey || dir?.publicKey || null,
+        verified: !!(f.verified || online?.verified || dir),
+        isFriend: true,
+        isOnline: !!online,
+        addedAt: f.addedAt || 0,
+        firstSeen: dir?.firstSeen || online?.firstSeen || 0
+      });
+    });
+
+    // 2. Conversations actives ou passées (même avec des pairs non-amis)
+    this.dmConversations.forEach((msgs, rawId) => {
+      const id = String(rawId || '').toLowerCase();
+      if (!id || id === myHash || !Array.isArray(msgs) || msgs.length === 0) return;
+      if (merged.has(id)) return;
+      const online = onlineMap.get(id);
+      const dir = storage.getDirectoryEntry(id);
+      const lastNamedMsg = [...msgs].reverse().find((m) => m.senderNickname);
+      merged.set(id, {
+        uuid: id,
+        publicKeyHash: id,
+        tag: online?.tag || dir?.tag || formatTag(id),
+        nickname: online?.nickname || dir?.pseudo || lastNamedMsg?.senderNickname || 'Utilisateur',
+        avatar: online?.avatar || dir?.avatar || '',
+        publicKey: online?.publicKey || dir?.publicKey || null,
+        verified: !!(online?.verified || dir),
+        isFriend: false,
+        isOnline: !!online,
+        addedAt: 0,
+        firstSeen: dir?.firstSeen || online?.firstSeen || 0
+      });
+    });
+
+    // 3. Pairs actuellement en ligne dans le salon
+    onlineMap.forEach((online, id) => {
+      if (merged.has(id)) {
+        merged.get(id).isOnline = true;
+        return;
+      }
+      const dir = storage.getDirectoryEntry(id);
+      merged.set(id, {
+        uuid: id,
+        publicKeyHash: id,
+        tag: online.tag || dir?.tag || formatTag(id),
+        nickname: online.nickname || dir?.pseudo || 'Anonyme',
+        avatar: online.avatar || dir?.avatar || '',
+        publicKey: online.publicKey || dir?.publicKey || null,
+        verified: !!(online.verified || dir),
+        isFriend: false,
+        isOnline: true,
+        addedAt: 0,
+        firstSeen: online.firstSeen || dir?.firstSeen || 0
+      });
+    });
+
+    // 4. Annuaire Gossip hors-ligne : masqué par défaut pour ne pas encombrer,
+    // affiché uniquement lors d'une recherche ou si le bouton "Annuaire" est activé
+    if (this.showGossipDirectory || this.chatSearchQuery.length > 0) {
+      dirEntries.forEach((entry) => {
+        const id = entry.publicKeyHash.toLowerCase();
+        if (merged.has(id)) return;
+        merged.set(id, {
+          uuid: id,
+          publicKeyHash: id,
+          tag: entry.tag,
+          nickname: entry.pseudo,
+          avatar: entry.avatar || '',
+          publicKey: entry.publicKey,
+          verified: true,
+          isFriend: false,
+          isOnline: onlineMap.has(id),
+          addedAt: 0,
+          firstSeen: entry.firstSeen || 0
+        });
+      });
+    }
+
+    // Filtrage + calcul activité dernier message
+    let list = Array.from(merged.values()).map((entry) => {
+      const conv = this.dmConversations.get(entry.uuid) || [];
+      const lastMsg = conv[conv.length - 1] || null;
+      return {
+        ...entry,
+        conv,
+        lastMsg,
+        lastActivityTs: lastMsg ? (lastMsg.timestamp || 0) : 0
+      };
+    });
+
+    if (this.chatSearchQuery) {
+      const q = this.chatSearchQuery;
+      list = list.filter(
+        (e) =>
+          e.nickname.toLowerCase().includes(q) ||
+          e.tag.toLowerCase().includes(q) ||
+          e.uuid.includes(q)
+      );
+    }
+
+    // Tri : derniers chats en premier, puis en ligne, puis amis
+    list.sort((a, b) => {
+      if (b.lastActivityTs !== a.lastActivityTs) {
+        return b.lastActivityTs - a.lastActivityTs;
+      }
+      if (a.isOnline !== b.isOnline) {
+        return a.isOnline ? -1 : 1;
+      }
+      if (a.isFriend !== b.isFriend) {
+        return a.isFriend ? -1 : 1;
+      }
+      return (b.addedAt || b.firstSeen || 0) - (a.addedAt || a.firstSeen || 0);
+    });
+
+    if (list.length === 0) {
       container.innerHTML = `
-        <div class="user-status-msg" style="padding:10px 4px;">
-          Aucun ami sauvegardé dans votre clé. Cliquez sur "+ Ami" ci-dessus !
+        <div class="user-status-msg" style="padding:12px 6px;">
+          ${this.chatSearchQuery ? 'Aucun résultat pour cette recherche.' : 'Aucune discussion ni pair en ligne. Utilisez "+ Ami" ou le QR Code !'}
         </div>`;
       return;
     }
 
     container.innerHTML = '';
-    this.profile.friends.forEach((friend) => {
-      const isOnline = p2p.isUserOnline(friend.uuid);
-      const conv = this.dmConversations.get(friend.uuid) || [];
-      const lastMsg = conv[conv.length - 1];
-
-      let lastActivityText = isOnline ? 'En ligne' : 'Hors ligne';
+    list.forEach((entry) => {
+      const lastMsg = entry.lastMsg;
+      let lastActivityText = entry.conv.length === 0 ? 'Démarrer un chat' : '';
       let iconHtml = '<span class="snap-icon opened"></span>';
 
       if (lastMsg) {
@@ -1275,93 +2092,98 @@ class SnapApp {
             lastActivityText = 'Nouveau Snap';
           } else {
             iconHtml = '<span class="snap-icon opened"></span>';
-            lastActivityText = lastMsg.isOutgoing ? 'Délivré' : 'Snap ouvert';
+            lastActivityText = lastMsg.isOutgoing ? (lastMsg.isOpened ? 'Ouvert' : 'Remis') : 'Snap ouvert';
+          }
+        } else if (lastMsg.type === 'system') {
+          iconHtml = '<span class="snap-icon opened"></span>';
+          lastActivityText = lastMsg.text ? lastMsg.text.slice(0, 26) : 'Message supprimé';
+        } else if (lastMsg.isOutgoing) {
+          const st = lastMsg.status || 'sent';
+          if (st === 'read') {
+            iconHtml = '<span class="snap-icon chat-read"></span>';
+            lastActivityText = 'Vu';
+          } else if (st === 'delivered') {
+            iconHtml = '<span class="snap-icon chat-delivered"></span>';
+            lastActivityText = 'Remis';
+          } else {
+            iconHtml = '<span class="snap-icon chat-delivered"></span>';
+            lastActivityText = 'Envoyé';
           }
         } else {
-          iconHtml = '<span class="snap-icon chat-unread"></span>';
-          lastActivityText = lastMsg.text ? lastMsg.text.slice(0, 24) : 'Message';
+          if (!lastMsg.readAckSent) {
+            iconHtml = '<span class="snap-icon chat-unread"></span>';
+            lastActivityText = 'Nouveau Chat';
+          } else {
+            iconHtml = '<span class="snap-icon chat-read"></span>';
+            lastActivityText = lastMsg.text ? lastMsg.text.slice(0, 24) : 'Message';
+          }
         }
       }
 
       const item = document.createElement('div');
-      const isActive = this.currentDmPeer && this.currentDmPeer.uuid === friend.uuid;
+      const isActive = this.currentDmPeer && this.currentDmPeer.uuid === entry.uuid;
       item.className = `user-item ${isActive ? 'active-chat' : ''}`;
       item.innerHTML = `
         <div class="user-left">
           <div class="user-avatar-wrap">
-            <img src="${friend.avatar || storage.createDefaultAvatar(friend.nickname)}" alt="Avatar">
-            ${isOnline ? '<span class="status-indicator"></span>' : ''}
+            <img src="${entry.avatar || storage.createDefaultAvatar(entry.nickname)}" alt="Avatar">
+            ${entry.isOnline ? '<span class="status-indicator"></span>' : ''}
           </div>
           <div class="user-text-info">
-            <div class="user-nickname">${friend.nickname}</div>
-            <div class="user-status-msg">${iconHtml} <span>${lastActivityText}</span></div>
+            <div class="user-nickname user-nickname-row">
+              <span class="user-nickname-text">${this.escapeHtml(entry.nickname)}</span>
+              <span class="user-tag-badge">${entry.tag}</span>
+              ${this.getVerifiedBadgeHtml(entry.verified)}
+            </div>
+            <div class="user-status-msg">${iconHtml} <span>${this.escapeHtml(lastActivityText)}</span></div>
           </div>
+        </div>
+        <div class="user-badges-actions">
+          <span class="status-pill ${entry.isOnline ? 'online' : 'offline'}">
+            ${entry.isOnline ? 'En ligne' : 'Hors ligne'}
+          </span>
+          ${
+            entry.isFriend
+              ? '<span class="friend-pill">Ami</span>'
+              : '<button type="button" class="btn-friend">+ Ajouter</button>'
+          }
         </div>
       `;
 
-      item.onclick = () => {
-        this.openDmWith(friend);
-      };
-
-      container.appendChild(item);
-    });
-  }
-
-  renderOnlinePeers() {
-    const container = document.getElementById('online-peers-container');
-    const peers = p2p.getOnlinePeers();
-
-    if (peers.length === 0) {
-      container.innerHTML = `
-        <div class="user-status-msg" style="padding:10px 4px;">
-          Aucun autre pair pour le moment dans ce salon. Ouvrez un 2ème onglet pour tester !
-        </div>`;
-      return;
-    }
-
-    container.innerHTML = '';
-    peers.forEach((peer) => {
-      const isFriend = this.profile.friends?.some((f) => f.uuid === peer.uuid);
-
-      const item = document.createElement('div');
-      const isActive = this.currentDmPeer && this.currentDmPeer.uuid === peer.uuid;
-      item.className = `user-item ${isActive ? 'active-chat' : ''}`;
-      item.innerHTML = `
-        <div class="user-left">
-          <div class="user-avatar-wrap">
-            <img src="${peer.avatar || storage.createDefaultAvatar(peer.nickname)}" alt="Avatar">
-            <span class="status-indicator"></span>
-          </div>
-          <div class="user-text-info">
-            <div class="user-nickname">${peer.nickname}</div>
-            <div class="user-status-msg">● En ligne dans la room</div>
-          </div>
-        </div>
-        <div class="user-actions">
-          <button class="btn-friend ${isFriend ? 'is-friend' : ''}">
-            ${isFriend ? 'Ami' : '+ Ajouter'}
-          </button>
-        </div>
-      `;
-
-      const btnFriend = item.querySelector('.btn-friend');
-      btnFriend.onclick = async (e) => {
-        e.stopPropagation();
-        if (isFriend) {
-          await storage.removeFriend(peer.uuid);
-          this.profile = await storage.getProfile();
-          this.showToast(`${peer.nickname} retiré des amis`);
-        } else {
-          // Envoyer une demande d'ami
-          p2p.sendFriendRequest(peer.nickname, peer.uuid);
-          this.showToast(`Demande d'ami envoyée à ${peer.nickname}`);
-        }
-        this.renderOnlinePeers();
-        this.renderFriendsList();
-      };
+      const addBtn = item.querySelector('.btn-friend');
+      if (addBtn) {
+        addBtn.onclick = async (e) => {
+          e.stopPropagation();
+          if (entry.isOnline) {
+            p2p.sendFriendRequest(`${entry.nickname}${entry.tag}`, entry.uuid);
+            this.showToast(`Demande d'ami envoyée à ${entry.nickname} (${entry.tag})`);
+          } else {
+            await storage.addFriend({
+              uuid: entry.uuid,
+              publicKeyHash: entry.uuid,
+              tag: entry.tag,
+              nickname: entry.nickname,
+              avatar: entry.avatar,
+              publicKey: entry.publicKey,
+              verified: true,
+              addedVia: 'gossip'
+            });
+            this.profile = await storage.getProfile();
+            this.showToast(`${entry.nickname} (${entry.tag}) ajouté aux amis`);
+          }
+          this.renderUnifiedList();
+        };
+      }
 
       item.onclick = () => {
-        this.openDmWith(peer);
+        this.openDmWith({
+          uuid: entry.uuid,
+          publicKeyHash: entry.uuid,
+          tag: entry.tag,
+          nickname: entry.nickname,
+          avatar: entry.avatar,
+          verified: entry.verified
+        });
       };
 
       container.appendChild(item);
@@ -1382,6 +2204,7 @@ class SnapApp {
    */
   bindModals() {
     document.getElementById('top-avatar-btn').addEventListener('click', () => {
+      this.renderProfileQrCode();
       document.getElementById('profile-modal').style.display = 'flex';
     });
 
@@ -1394,10 +2217,21 @@ class SnapApp {
       if (!file) return;
       const b64 = await storage.compressAvatar(file);
       this.profile.avatar = b64;
-      await storage.saveProfile(this.profile, this.profile.isTemporary);
+      this.profile = await storage.resignOwnProfile(this.profile);
+      await p2p.refreshKeys(this.profile);
       this.updateProfileUI();
       p2p.broadcastIdentity();
-      this.showToast('Avatar mis à jour');
+      this.showToast('Avatar mis à jour et re-signé');
+    });
+
+    document.getElementById('btn-copy-qr-url')?.addEventListener('click', async () => {
+      if (!this.currentShareUrl) return;
+      try {
+        await navigator.clipboard.writeText(this.currentShareUrl);
+        this.showToast('Lien QR copié dans le presse-papier');
+      } catch (err) {
+        this.showToast('Copiez le lien affiché sous le QR Code');
+      }
     });
 
     document.getElementById('btn-export-key').addEventListener('click', async () => {
@@ -1406,9 +2240,9 @@ class SnapApp {
 
       try {
         await navigator.clipboard.writeText(base64Code);
-        this.showToast('Clé téléchargée et code copié dans le presse-papier');
+        this.showToast('Profil complet (.json) téléchargé et code copié');
       } catch (err) {
-        this.showToast('Fichier .json de clé téléchargé');
+        this.showToast('Fichier .json du profil complet téléchargé');
       }
     });
 
@@ -1475,6 +2309,35 @@ class SnapApp {
         this.showToast(`Salon ${code} rejoint`);
       }
     });
+
+    const clearChatModal = document.getElementById('clear-chat-modal');
+    if (clearChatModal) {
+      document.getElementById('btn-close-clear-chat-modal')?.addEventListener('click', () => {
+        clearChatModal.style.display = 'none';
+      });
+
+      clearChatModal.addEventListener('click', (e) => {
+        if (e.target === clearChatModal) {
+          clearChatModal.style.display = 'none';
+        }
+      });
+
+      document.getElementById('btn-clear-chat-me')?.addEventListener('click', async () => {
+        const peerUuid = this.currentDmPeer?.uuid;
+        clearChatModal.style.display = 'none';
+        if (peerUuid) {
+          await this.clearConversation(peerUuid, 'me');
+        }
+      });
+
+      document.getElementById('btn-clear-chat-all')?.addEventListener('click', async () => {
+        const peerUuid = this.currentDmPeer?.uuid;
+        clearChatModal.style.display = 'none';
+        if (peerUuid) {
+          await this.clearConversation(peerUuid, 'all');
+        }
+      });
+    }
   }
 
   showOnboardingModal() {
@@ -1500,16 +2363,12 @@ class SnapApp {
 
       if (!pseudo) return;
 
-      const newProfile = {
-        uuid: storage.generateUUID(),
+      const newProfile = await storage.createProfile({
         nickname: pseudo,
-        avatar: avatarData || storage.createDefaultAvatar(pseudo),
-        friends: [],
-        savedMessages: {},
-        createdAt: Date.now()
-      };
+        avatar: avatarData,
+        temporary: isTemp
+      });
 
-      await storage.saveProfile(newProfile, isTemp);
       modal.style.display = 'none';
       await this.startAppWithProfile(newProfile);
     });
@@ -1528,8 +2387,10 @@ class SnapApp {
       <svg class="svg-icon-xs" viewBox="0 0 24 24" fill="var(--snap-yellow)">
         <circle cx="12" cy="12" r="10"></circle>
       </svg>
-      <span>${message}</span>
     `;
+    const span = document.createElement('span');
+    span.textContent = String(message ?? '');
+    toast.appendChild(span);
     container.appendChild(toast);
 
     setTimeout(() => {
